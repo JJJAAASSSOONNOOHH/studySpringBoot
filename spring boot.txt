@@ -1,0 +1,1356 @@
+Auto Configuration : 자동 설정
+: 특정한 라이브러리가 있다면 이에 관한 설정으로 자동으로 추가하는 것
+
+MySQL을 위한 JDBC 드라이버 : maven repository에 가서 관련 gradle 
+Spring Boot 프로젝트 내 MySQL 설정 :application.properties 나 application.yml
+
+Spring Data JPA
+- ORM : Object Relational Mapping : 객체지향 패러다임을 관계형 패러다임으로 mapping 해주는 개념
+- JPA : Java Persistence API : ORM을 Java언어에 맞게 사용하는 '스펙' - 가장 유명 : Hibernate
+
+Spring ~ DB
+: Spring Data JPA <-> Hibernate <-> JDBC <-> DB
+
+Spring Data JPA가 개발에 필요한 것
+- JPA를 통해 관리하게 되는 객체(Entity Object)를 위한 Entity 클래스
+- Entity 객체들을 처리하는 기능을 가진 Repository 인터페이스
+
+Entity 클래스
+- @Table에 오류 : File - Setting - Editor - Inspections - JPA - Unresolved database references in annotations 체크 해제 (사실 오류는 아님)
+- @Entity : 해당 클래스가 엔티티를 위한 클래스이고, 해당 클래스의 instance들이 JPA로 관리되는 Entity 객체라는 것을 의미함. 옵션에 따라서 자동으로 테이블 생성 + 멤버 변수에 따라 자동으로 칼럼들도 생성
+- @Table : DB 상에서 Entity를 어떤 테이블로 생성할건지에 대한 정보를 담기 위한 Annotation. (@Table(name="t_memo")로 지정하면 생성되는 테이블 이름이 't_memo'로 생성됨.) + 인덱스 등도 생성가능
+- @Id : @Entity가 붙으면 PK에 해당하는 특정 필드를 @Id로 지정해야 함. @Id가 사용자가 입력하는 값을 사용하는 게 아니라면 @GeneratedValue를 사용해서 자동으로 생성되는 번호를 사용
+- @GeneratedValue(strategy = GenerationType.IDENTITY) : PK를 자동 생성(키 생성전략). auto increment를 기본으로 사용, 새로운 레코드가 기록될 때마다 다른 번호를 가질 수 있도록 처리됨. 
+· AUTO(default) : JPA(Spring에서는 Hibernate)가 생성방식을 결정
+· IDENTITY : 사용하는 DB가 키 생성을 결정 (MySQL : Auto Increment)
+· SEQUENCE : DB의 sequence를 이용해서 키 생성. @SequenceGenerate와 같이 사용
+· TABLE : 키 생성 전용 테이블을 생성해서 키 생성. @TableGenerator와 같이 사용
+- @Column : 추가적인 필드가 필요할 때 사용하는 Annotation. 주로 nullable, name, length 등을 이용해서 DB의 칼럼에 필요한 정보를 제공함. 속성 중 columnDefinition을 사용하면 기본값을 지정할 수도 있음
+=> @Column(columnDefinition = "varchar(255) default 'Yes'"
+- @Getter : getter 메서드 생성
+- @Builder : 객체를 생성할 수 있게 처리
+- @AllArgsConstructor, @NoArgsConstructor를 항상 같이 써야 컴파일 에러 X
+- @Transient : DB 테이블에 칼럼으로 생성되지 않는 필드.
+
+Spring Data JPA를 위한 Spring Boot 설정 - application.properties/application.yml
+- spring.datasource.driver-class-name=
+- spring.datasource.url=
+- spring.datasource.username=
+- spring.datasource.password=
+- spring.jpa.hibernate.ddl-auto=
+- spring.jpa.properties.hibernate.format_sql=
+- spring.jpa.show-sql=
+
+* spring.jpa.hibernate.ddl-auto : 프로젝트 실행 시 자동으로 DDL(create, alter, drop 등)을 생성할 건지 결정하는 설정. 설정값은 create, update, create-drop, validate가 있음. 
+=> create는 매번 테이블 생성을 새로 시도. update는 변경이 필요할 때는 alter, 테이블이 없으면 create가 되도록 설정함
+* spring.jpa.hibernate.format_sql : 실제 JPA의 구현체인 Hibernate가 동작하면서 발생하는 SQL을 formatting해서 출력. 실행되는 SQL의 가독성을 높여줌
+* spring.jpa.show-sql : JPA 처리 시 발생하는 SQL을 보여줄 것인지 결정
+
+=> 실행된 DDL을 보면 Entity의 @Table의 name = ? 과 동일하게 테이블 이름이 지정됨. name이 없다면 클래스의 이름으로 테이블이 생성됨. 
+
+
+JpaRepository 인터페이스
+: 특별한 경우가 아니면 JpaRepository를 사용하는게 무난함. 일반적인 기능만을 사용할때는 CrudRepository 사용하는 게 좋음
+=> JpaRepositroy<A, B> : A에는 Entity의 타입정보(Memo 클래스 타입) B에는 @Id의 타입을 지정. => JpaRepository<Memo, Long>
+- insert작업 : save(Entity 객체)
+- select작업 : findById(키 타입), getOne(키 타입)
+- update작업 : save(Entity 객체)
+- delete작업 : deleteById(키 타입), delete(Entity 객체)
+=> 여기서 insert와 update에서 동일하게 save() 메서드를 사용하는데, JPA의 구현체가 메모리 상(Entity Manager가 Entitiy들을 관리하는 방식)에서 객체를 비교하고 없으면 insert, 존재하면 update를 동작시키는 방식으로 동작하기 때문임
+
+findById() : java.util이 optional 타입으로 변환되기에 한번 더 결과가 존재하는 지를 체크하는 형태로 작성하게 됨.
+getOne() : 리턴 값은 해당 객체지만, 실제 객체가 필요한 순간까지 SQL을 실행하지는 않음
+-> @Transactional이 추가로 필요 (트랜잭션 처리를 위해 사용하는 annotation)
+ 
+### JPA는 Entity 객체들을 메모리상에 보관하려고 하기 때문에 특정한 Entity객체가 존재하는 지 확인하는 select가 먼저 실행되고 해당 @Id를 가진 Entity가 있으면 update, or insert를 실행하게 됨
+
+
+페이징/정렬 처리
+: JPA는 'Dialect'를 이용해서 처리함. JPA가 실제 DB에서 사용하는 SQL의 처리를 자동으로 하므로 API의 객체와 메서드를 사용하는 형태로 페이징 처리를 할 수 있음. 
+- JPA에서 페이징 처리와 정렬은 findAll()을 사용함.
+
+findAll() : JpaRespository 인터페이스의 상위인 PagingAndSortRepository의 메서드로 파라미터로 전달되는 Pageable이라는 타입의 객체에 의해 실행되는 쿼리를 결정하게 됨. 단, 리턴타입을 Page<T>타입으로 지정하면 파라미터를 Pageable 타입을 이용해야 함. 
+
+
+Pageable 인터페이스
+: 페이징 처리를 위해 가장 중요함. Pageable은 페이지 처리에 필요한 정보를 전달하는 용도의 타입으로, 인터페이스이므로 실제 객체를 생성할 때는 구현체인 org.springframework.data.domain.PageRequest라는 클래스를 사용함
+
+PageReqeust
+: 생성자는 protected로 선언되어 new를 사용 불가. 객체 생성을 위해서는 static한 of()를 사용. 생성자를 보면 page, size, Sort를 이용해 객체를 생성함
+- of (int page, int size) : 0부터 시작하는 페이지 번호와 개수(size), 정렬 지정 X
+- of (int page, int size, Sort.Direction direction, String ... props) : 0부터 시작하는 페이지 번호와 개수, 정렬의 방향과 정렬기준 필드)
+- of (int page, int size, Sort sort) : 페이지 번호와 개수, 정렬관련정보
+
+
+페이징처리
+: Spring Data JPA를 이용 시 페이징 처리는 반드시 0부터 시작.
+=>
+Pageable pageable = PageRequest.of(0, 10);
+Page<Memo> result = memoRepository.findAll(pageable);
+System.out.println(result);
+
+-> 리턴 타입 : org.springframework.data.domain.Page임. 
+-> Page는 단순히 해당 목록만 가져오는 게 아니라, 실제 페이지 처리에 필요한 전체 데이터의 개수를 가져오는 쿼리 역시 같이 처리함 (데이터가 충분하지 않으면 데이터의 개수를 가져오는 쿼리 실행 X) - count()도 같이 실행한다는 말
+-> 메서드
+getTotalPages() : Total Pages
+getTotalElements() : Total Count
+getNumber() : Page Number 
+getSize() : Page Size
+hasNext() : has next page?
+isFirst() : first page?
+-> 실제 페이지의 데이터를 처리하는 것은 getContent() : List<Entity> or get(): Stream<Entity>
+
+
+정렬조건 추가
+PageRequest에 정렬과 관련된 org.springframework.data.domain.Sort를 파라미터로 전달 가능.
+Sort는 1개 혹은 여러개의 필드 값을 이용해서 asc나 desc를 지정할 수 있음.
+desc : Sort.by("").descending();
+asc : Sort.by("").ascending();
+
+
+쿼리 메서드 기능 & @Query
+- 쿼리 메서드 : 메서드의 이름 자체가 쿼리의 구문으로 처리되는 기능
+- @Query : SQL과 유사하게 Entity의 정보를 이용해서 쿼리를 작성하는 기능
+- Querydsl, JPQL(Java Persistence Query Language)
+
+쿼리 메서드(Query Methods) (p72)
+: 말 그대로 메서드 이름이 그 자체가 query문이 되는 기능. 주로 findBy~, getBy~로 시작 + 이후에 필요한 필드조건이나 And, Or와 같은 키워드를 이용해서 메서드 이름 자체로 질의 조건을 만들어 냄
+- Spring Data JPA Reference를 이용해서 찾아볼 수 있음
+https://docs.spring.io/spring-data/jpa/reference/jpa/query-methods.html
+https://docs.spring.io/spring-data/jpa/reference/repositories/query-keywords-reference.html
+- select는 List, 배열을 이용할 수 있다
+- 파라미터에 Pageable을 넣는 경우에는 무조건 page<E>타입임.
+
+쿼리메서드와 Pageable의 결합
+: 정렬에 대한 부분은 Pageable로 처리해서 좀 더 간략한 메서드를 생성할 수 있음
+=> 
+List<Memo> findByMnoBetweenOrderByMnoDesc(Long from, Long to);
+Page<Memo> findByMnoBetween(Long from, Long to, Pageable pageable);
+
+deleteBy로 시작하는 삭제 처리
+: deleteBy로 메서드 이름을 시작하면 특정한 조건에 맞는 데이터를 삭제가능
+=>
+void deleteMemoByMnoLessThan(Long num);
+
+@Commit : 최종결과를 커밋하기 위해 사용
+@Transactional : 트랜잭션
+* deleteBy는 실제 개발에는 많이 사용 X. -> SQL을 이용하듯이 한번에 삭제가 아니라 각 Entity 객체를 하나씩 삭제하기 때문 -> @Query를 이용해서 비효율을 개선함
+
+
+@Query
+- value는 JPQL(Java Persistence Query Language)로 작성, '객체지향 쿼리'
+-> 필요한 데이터만 선별적으로 추출 가능
+-> DB에 맞는 순수한 SQL(Native SQL)을 사용
+-> insert, update, delete와 같은 DML을 처리하는 기능 (with @Modifying)
+- 객체지향 쿼리는 테이블 대신 Entity를 이용하고, 테이블의 칼럼 대신 클래스에 선언된 필드를 이용해서 작성함
+=> 'mno의 역순으로 정렬하라'
+@Query("select mno from Memo m order by m.mno desc")
+List<Memo> getListDesc();
+- 실제 SQL에서 사용되는 함수들도 JPQL에서 동일하게 사용됨. avg(), count(), group by, order by
+
+@Query의 파라미터 바인딩
+- '?1, ?2' 등 1부터 시작하는 파라미터의 순서를 이용하는 방식
+- ':xxx' 등 ':파라미터 이름'을 활용하는 방식
+=> 
+@Transactional
+@Modifying
+@Query("update Memo m set m.memoText = :memoText where m.mno = :mno")
+int updateMemoText(@Param("mno") Long mno, @Param("memoText") String memoText);
+--> :를 이용하는 경우는 여러 개의 파라미터 전달 시 복잡해진다고 생각되면 ':#'를 이용해서 객체 사용 가능
+=>
+@Transactional
+@Modifying
+@Query("update Memo m set m.memoText = :#{#param.memoText} where m.mno = :#{#param.mno}")
+int updateMemoText(@Param("param") Memo memo);
+- ':#{}'와 같이 자바 빈 스타일을 이용하는 방식
+
+
+@Query와 페이징 처리
+: 쿼리메서드와 마찬가지로 @Query를 사용할 때도 Pageable 타입의 파라미터를 적용하면 페이징처리 + 정렬에 대한 부분을 작성하지 않아도 됨. @Query를 이용할 때는 별도의 countQuery라는 속성을 적용해 주고 Pageable 타입의 파라미터를 전달하면 됨
+=> 
+@Query(value = "select m from Memo m where m.mno > :mno", countQuery = "select count(m) from Memo m where m.mno > :mno")
+Page<Memo> getListWithQuery(Long mno, Pageable pageable)
+
+
+Object[] 리턴
+: @Query의 경우 현재 필요한 데이터만을 Object[]형태로 선별적 추출이 가능함. JPQL을 이용할 때 경우에 따라 JOIN, GROUP BY를 사용하는 경우가 종종 있는데, 이때 적당한 Entity 타입이 존재하지 않는 경우가 많기 때문에 이때 리턴타입으로 Object[]를 지정 가능함
+=>
+@Query(value = "select m.mno, m.memoText, CURRENT_DATE from Memo m where m.mno > :mno:", countQuery = "select count(m) from Memo m where m.mno > :mno")
+Page<Object[]> getListWithQueryObject(Long mno, Pageable, pageable);
+
+
+Native SQL 처리
+: DB 고유의 SQL 문을 그대로 활용 가능. JPA 자체가 DB에 독립적으로 구현이 가능하다는 장점은 없어지지만 경우에 따라 복잡합 JOIN을 처리하기 위해 어쩔 수 없는 선택할 때 사용. 
+=>
+@Query(value = "select * from memo where mno > 0", nativeQuery = true)
+List<Object[]> getNativeResult();
+-> @Query의 nativeQuery = true로 하고 일반 SQL문을 그대로 사용할 수 있음
+
+
+Spring MVC & Thymeleaf
+- Thymeleaf를 사용하는 이유
+: JSP와 유사하게 ${}를 별도의 처리없이 이용 가능
+: Model에 담긴 객ㅊ를 화면에서 JS로 처리하기 편함
+: 연산이나 포맷에 관련된 기능을 추가적인 개발없이 지원
+: 개발 도구 이용 시 .html로 생성하는 데 문제 X + 별도의 확장자 이용 X
+
+Thymeleaf 이용
+- dependency에서 thymeleaf를 추가
+- thymeleaf를 이용하는 프로젝트는 변경 후 만들어진 결과를 보관(캐싱)하지 않도록 설정하는게 편리함 
+-> application에 spring.thymeleaf.cache=false 추가
+- html에 사용하려면 
+<html lang="kr" xmlns:th="http://www.thymeleaf.org"> 추가
+- 기본적인 사용방법 : 기존의 속성 앞에 th:를 붙이고 속성값을 지정하는 것
+
+@Data : Getter/Setter, toString(), equals(), hashCode()를 자동으로 생성함
+
+*value 속성값을 {}로 처리 시 하나 이상 지정 가능
+
+
+반복문 처리 - th:each
+: th:each = "변수: ${목록}"
+=> 
+<li th:each="dto : ${list}">
+	[[${dto}]]
+</li>
+: dto라는 변수를 만들어서 사용하고 Model로 전달된 데이터는 ${list}를 이용해서 처리함
+[[]] : 인라인 표현식, 별도의 태그 속성으로 지정하지 않고 사용할 때 유용함
+
+
+반복문의 상태(state) 객체
+: 순번, 인덱스번호, 홀/짝수 지정 가능
+=>
+<li th:each="dto, state : ${list}">
+ [[${state.index}]] --- [[${dto}]]
+</li>
+
+
+제어문 처리 - th:if ~ unless 혹은 삼항연산자 스타일
+=>
+<li th:each="dto, state : ${list}" th:if="${dto.sno % 5 == 0}">
+ [[${dto}]]
+</li>
+: 반복문을 실행하는데, dto.sno를 5로 나눈 나머지가 0일때만 해라 라는 뜻
+=> sno가 5로 나눈 나머지가 0인 경우에는 sno만, 아니면 SampleDTO의 first를 출력하라
+<li th:each="dto, state : ${list}">
+ <span th:if="${dto.sno % 5 == 0}" th:text="${'-------------------'+dto.sno}"></span>
+ <span th:unless="${dto.sno % 5 == 0}" th:text="${dto.first}"></span>
+</li>
+--> 결과
+First.1
+First.2
+First.3
+First.4
+-----------5
+First.6
+First.7
+First.8
+First.9
+----------10
+... 이런식으로 진행된다
+
+* 삼항 연산자
+<1번 예제>
+<li th:each="dto, state : ${list}" th:text="{dto.sno % 5 == 0 } ? ${dto.sno}"></li>
+
+<2번 예제>
+<li th:each="dto, state : ${list}" th:text="{dto.sno % 5 == 0 } ? ${dto.sno} : ${dto.first}">
+</li>
+
+* th:class 사용하기
+<style>
+ .target {
+  background-color: red;
+ }
+</style>
+<li th:each="dto, state : ${list}" th:class="${dto.sno % 5 == 0} ? 'target'" th:text="${dto}"> </li>
+=> 결과
+SampleDTO(sno=1 ...)
+SampleDTO(sno=2 ...)
+SampleDTO(sno=3 ...)
+SampleDTO(sno=4 ...)
+■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+이런식으로 나오게 됨
+-> 특정 상황에서만 class 속성값이 지정되고 나머지는 class 속성값이 작성되지 않음
+
+
+inline 속성
+: JS 처리에서 유용함
+- th:inline="javascript"
+: 이걸 사용하면 별도의 처리가 없더라도 문자열은 자동으로 ""가 추가되어 문자열이 되는 것을 볼 수 있고, 같이 전송한 것은 JSON 포맷의 문자열이 됨
+
+
+th:block
+: 별도의 태그가 필요하지 않음. 루프 처리 등 별도로 처리하는 용도로 많이 사용됨
+=>
+<th:block th:each="dto: ${list}">
+ <li th:text="${dto.sno % 5 == 0} ? ${dto.sno} : ${dto.first}"></li>
+</th:block>
+:
+First_1
+First_2
+First_3
+First_4
+5
+First_6
+First_7
+First_8
+First_9
+10
+...
+
+
+링크 처리
+: @{}를 사용
+=>
+<li th:each="dto : ${list}">
+ <a th:href="@{/sample/exView(sno=${dto.sno})}">[[${dto}]]</a>
+</li>
+: sno별로 추가됨
+<a href="/sample/exView?sno=1">
+ "sno=1인 SampleDTO"
+<a href="/sample/exView?sno=2">
+ "sno=2인 SampleDTO"
+<a href="/sample/exView?sno=3">
+ "sno=3인 SampleDTO"\
+...
+
+만약 sno를 path로 이용하고 싶으면
+<a th:href="@{/sample/exView/{sno}(sno=${dto.sno})}">[[${dto}]]</a>
+
+{sno}에 ()안의 값이 저장됨
+
+
+
+Thymeleaf의 기본 객체와 LocalDateTime
+- 기본 객체 : basic objects. 문자, 숫자, 웹에서 사용되는 파라미터, request, response, session 등등
+- thymeleaf에서는 #numbers, #dates 등을 이용해서 가능함
+=> sno를 5자리로 만들기
+<li th:each="dto : ${list}">
+ [[${#numbers.formatInteger(dto.sno, 5){]]
+</li>
+-->
+00001
+00002
+00003
+...
+
+- LocalDateTime, LocalTime은 복잡한 방식으로 처리해야하는데 편리하게 하려면 http://github.com/thymeleaf/thymeleaf-extras-java8time을 이용해야 함
+{gradle}
+implementation 'org.springframework.boot:spirng-boot-starter-thymeleaf'
+implementation 'org.springframework.boot:spirng-boot-starter-web'
+compileOnly 'org.projectlombojk:lombok'
+developmentOnly 'org.springframework.boot:spirng-boot-devtools'
+annotationProcessor 'org.projectlombok:lombok'
+providedRuntime 'org.springframework.boot:spring-boot-starter-tomcat'
+testImplementation('org.springframework.boot:spring-boot-starter-test') { exclude group: 'org.junit.vintage', module:'junit-vintage-engine'}
+compile group: 'org.thymeleaf.extras', name:'thymeleaf-extras-java8time'
+
+실제 화면에서는 #temporals + format()으로 처리함
+=>
+<li th:each="dto : ${list}">
+ [[${dto.sno}]] --- [[${#temporals.format(dto.regTime, 'yyyy/MM/dd'){]]
+</li>
+
+
+Thymeleaf의 레이아웃
+1) JSP의 include와 같이 외부/내부에서 가져와서 포함하는 형태
+2) 특정 부분을 파라미터로 전달해서 내용에 포함하는 형태
+
+1) include 방식의 처리
+: th:insert, th:replace 
+*th:replace는 기존의 내용을 완전히 대체하는 방식
+*th:insert : 기존 내용의 바깥쪽 태그는 그대로 유지하며 추가되는 방식
+###사용방법
+th:fragment=""로 조각을 지정함
+th:insert)
+<th:insert="~{/fragments/fragment1 :: part1}">
+: fragments폴더안에 있는 fragment1파일안에서 part1이라는 fragment를 가져와서 insert한다
+th:replace도 방식은 같고 다만 그 위치에 바꾸는 것일 뿐임
+
+2) 파라미터 방식의 처리
+: Thymeleaf를 사용 시 특정 태그를 파라미터처럼 전달해서 다른 th:fragment에서 사용 가능
+한 html에서 fragment를 함수 선언하듯이 선언하고 다른곳에서 불러와서 사용
+=>
+fragment3.html
+<div th:fragment="target(first, second)">
+ <style>
+  .c1 {
+   background-color: red;
+  }
+  .c2 {
+   background-color: blue;
+  }
+ </style>
+
+ <div class="c1">
+  <th:block th:replace = "${first}"></th:block>
+ </div>
+
+ <div class="c2">
+  <th:block th:replace = "${second}"></th:block>
+ </div>
+</div>
+
+exlayout2.html
+<th:block th:replace="~{/fragments/fragment3:: target(~{this:: #ulFirst} , ~{this.::#ulSecond})}">
+ <ul id="ulFirst">
+  <li>AAA</li>
+  <li>BBB</li>
+  <li>CCC</li>
+ </ul>
+
+ <ul id="ulSecond">
+  <li>111</li>
+  <li>222</li>
+  <li>333</li>
+ </ul>
+</th:block>
+* 여기에서 this : 현재 페이지를 의미할 때 사용하며 생략 가능
+
+
+레이아웃 템플릿 만들기
+: 화면 전체를 하나의 템플릿을 만들고 Header + Content + footer로 이루어져있다고 가정하면 각 영역별로 변경이 가능하도록 수정해야 함
+: 컨트롤러에서 Mapping 할때 사용하고자 하는 모든 페이지를 매핑 해주는걸 잊어도 안됨
+
+
+부트스트랩 템플릿 적용하기(p118, 파일116p)
+
+
+
+==============
+
+@MappedSuperClass : 해당 Annotation이 적용된 클래스는 테이블로 생성 X. 실제 테이블은 BaseEntity를 상속한 Entity의 클래스로 DB 테이블이 생성됨
+
+MyBatis
+:
+A ↔ DAO(or Mapper) ↔ Mybatis ( JDBC ↔ DB
+
+JPA는 JPA만의 고유한 메모리 공간(context)를 이용해서 Entity 객체들을 관리함
+=>
+Repository ↔ EntityManager ↔ Persistence Context ↔ JDBC ↔ DB
+
+
+--> MyBatis를 이용하는 경우 SQL을 위해 전달되는 객체는 SQL 처리가 끝난 후에는 어떻게 되든 상관없는 객체들이지만 JPA에서 사용되는 Entity 객체들은 영속 Context라는 곳에서 관리되는 객체임. 이 객체들이 변경되면 결과적으로 DB에 이를 반영하는 방식임. JPA에서는 Entity가 유지되고 필요할 때마다 꺼내서 재사용하게 됨. 그래서 Entity에는 어떤 변화가 일어나는지 감지하는 listener가 있음. JPA내부에서 Entity가 생성/변경되는 것을 감지하는 역할은 AuditingEntityListener로 이루어짐. 예제에서는 regDate, modDate에 적절한 값이 지정됨.
+
+@CreatedDate : JPA에서 Entity의 생성 시간 처리
+@LastModifiedDate : 최종수정시간을 자동으로 처리
+--> 속성으로 insertable, updateable이 존재
+
+JPA를 이용하면서 AuditingEntityListener를 활성화하려면 프로젝트에 @EnableJpaAuditing 설정을 추가해야함 -> Application.class 수정 (예제에선 GuestbookApplication.class)
+
+
+4.3.1 동적 쿼리 처리를 위한 Querydsl 설정
+: JPA의 쿼리메서드와 @Query를 통해 많은 기능을 구현 가능하지만, 선언 시 고정된 형태의 값을 가진다는 단점이 있음. Querydsl을 통해 복잡한 조합을 이용하는 경우의 수가 많은 상황에서 동적으로 쿼리를 생성해서 처리할 수 있는 기능을 사용할 수 있음. 복잡한 검색조건이나 JOIN, SUBQUERY등도 구현 가능
+-> 'Q도메인'이라는 것을 이용해야 하고, 이를 작성하기 위해서는 Querydsl 라이브러리를 이용해서 Entity를 Q도메인으로 변환하는 방식을 이용해야 함
+-> plugin에서 querydsl관련부분 추가
+-> dependencies 에 필요한 라이브러리 추가
+-> gradle에서 사용할 추가적인 task를 추가함
+
+
+만약 regdate, moddate가 null로 된다면
+- BaseEntity 내용 체크
+- Guestbook 클래스의 상속 선언 부분 체크
+- @EnableJpaAuditing 적용 여부 체크
+
+
+
+수정 시간 테스트
+: Entity에서는 가능하면 setter를 만들지 않는게 권장사항이지만 필요에 따라서는 만들기도 함
+-> Entity가 애플리케이션 내부에서 변경되면 JPA 관리가 복잡해질 우려가 있으므로 최소한의 수정이 가능하도록 하는 것을 권장함
+
+
+4.3.3 Querydsl 테스트
+: Querydsl의 실습
+- '제목/내용/작성자'와 같이 단 하나의 항목으로 검색
+- '제목 +내용'/'내용+작성자'/'제목+작성자'와 같이 2개의 항목으로 검색
+- '제목 + 내용 + 작성자'와 같이 3개의 항목으로 검색
+: Querydsl의 사용법
+- BooleanBuilder 생성
+- 조건에 맞는 구문은 Querydsl에서 사용하는 Predicate 타입의 함수를 생성
+- BooleanBuilder에 작성된 Predicate를 추가하고 실행
+
+: 다중 항목 검색 테스트
+Pageable pageable = PageRequest.of(0, 10, Sort.by("gno").descending());
+QGuestbook qGuestbook = QGuestbook.guestbook;
+String keyword = "1";
+BooleanBuilder builder = new BooleanBuilder();
+BooleanExpression exTitle = qGuestbook.title.contains(keyword);
+BooleanExpression exContent = qGuestbook.content.contains(keyword);
+BooleanExpression exAll = exTitle.or(exContent);
+builder.and(exAll);
+builder.and(qGuestbook.gno.gt(0L));
+Page<Guestbook> result = guestbookRepository.findAll(builder, pageable);	
+
+
+4.4 서비스 계층과 DTO (p150, 파일 p148)
+: 실제 프로젝트를 작성할 경우 Entity를 영속 계층 바깥쪽에서 사용하는 방법 보다는 DTO(Data Transfer Object)를 이용하는 방식이 권장됨
+DTO는 Entity와 달리, 각 계층끼리 주고 받는 우편물 or 상자의 개념. 목적 자체가 데이터의 전달이므로 읽고 쓰는 것이 모두 허용되고 일회성으로 사용되는 성격이 강함
+JPA를 이용하면 Entity는 단순히 Data를 담는 객체가 아니라 실제 DB와 관련이 있고, 내부적으로 Entity Manager가 관리하는 객체임 - 생명주기도 전혀 다르므로 분리해서 처리하는게 권장됨
+* 웹 애플리케이션을 제작할 때는 HttpServletRequest/HttpServletResponse를 서비스 계층으로 전달하지 않는 게 원칙. 유사하게 Entity가 JPA에서 사용하는 객체이므로 JPA 외에는 사용하지 않는게 권장됨.
+
+DTO를 사용하는 경우의 가장 큰 단점은 Entity와 유사한 코드를 중복으로 개발한다는 점 + Entity를 DTO로 변환 / DTO를 Entity로 변환하는 과정이 필요하다. 
+=> DTO를 사용하면 Entity의 범위를 한정 지을 수 있으므로 좀 더 안전한 코드 작성 가능 + 화면과 데이터를 분리하려는 취지에도 좀 더 부합함
+
+
+#작성된 GuestbookDTO는 Entity인 Guestbook과 거의 동일한 필드를 가지고 있고, getter/setter를 통해 자유로이 값을 변경할 수 있게 구성함. 
+# 서비스 계층에서는 GuestbookDTO를 이용해서 필요한 내용을 전달받고 반환하도록 처리.
+-> GuestbookService 인터페이스, GuestbookServiceImpl 클래스 생성
+ 
+
+4.4.1 등록과 DTO를 Entity로 변환 (p153, 파일 p151)
+: 서비스 계층에서는 파라미터를 DTO 타입으로 받음
+: 이를 JPA로 처리하려면 Entity로 변환하는 작업이 반드시 필요함
+: 이 작업을 DTO에 적용 or ModelMapper(http://modelmapper.org) or MapStruct(https://mapstruct.org) 등을 이용하기도 하지만 default를 이용하면 이를 직접 처리 가능
+: 기존에 만든 DTO와 Entity 가능하면 변경하고 싶지 않으므로 default를 이용해서 실제 코드를 작성할 수 있음
+default : 기존에 추상 클래스를 통해서 전달해야 하는 실제 코드를 interface에 선언 가능. 
+:: '인터페이스 -> 추상클래스 -> 구현클래스'의 형태로 구현되면 추상 클래스 생략이 가능
+
+
+서비스 계층의 테스트
+1) 실제 DB에 저장되지 않고 변환 결과를 알 수 있도록 테스트 작성
+2) 문제가 없으면 Impl을 수정해서 실제 DB에 처리되도록 수정
+
+
+
+4.5 목록 처리 (p158, 파일 p156)
+: 목록처리는 다음 상황을 고려해야 함
+- 화면에서 필요한 목록 데이터에 대한 DTO 생성
+- DTO를 Pageable 타입으로 전환
+- Page<E>를 화면에서 사용하기 쉬운 DTO의 리스트 등으로 변환
+- 화면에 필요한 페이지 번호 처리
+=> GET방식으로 파라미터 전달 + DTO 리스트 출력 + 페이지 처리 와 같은 형태로 출력하게 됨
+
+4.5.1 목록 처리를 위한 DTO
+: 모든 목록을 처리하는 기능에는 페이지 번호, 한 페이지 당 몇개나 출력될 것인지 같은 공통적 부분이 많기에 클래스로 만들면 앞으로 만드는 여러 예제에서 사용 가능
+=> PageRequestDTO, PageResultDTO
+- 페이지 요청 처리 DTO (PageRequestDTO)
+: 목록 페이지를 요철할 때 사용하는 데이터를 재사용하기 쉽게 만드는 클래스
+: '페이지 번호', '페이지 내 목록 개수', '검색 조건'들이 많이 사용됨
+: PageReqeustDTO는 화면에서 전달되는 page, size를 수집. 페이지 번호는 기본 값을 가지는게 좋으므로 1와 10을 사용. 진짜 목적은 JPA에서 사용하는 Pageable을 생성하는 것. JPA를 이용하는 경우 페이지 번호가 0부터 시작한다는 점을 감안해서 1페이지의 경우 0이 될 수 있도록 page-1. 정렬은 나중에 다양한 상황에서 사용하기 위해 별도의 파라미터로 받도록 설계함
+- 페이지 겨과 처리 DTO (PageResultDTO)
+: JPA를 이용하는 Repository에서는 페이지 처리 결과를 Page<Entity>타입으로 반환하게됨. 따라서 서비스 계층에서 이를 처리하기 위해서도 별도의 클래스를 만들어 처리해야 함
+· Page<Entity>의 Entity를 DTO로 변호나해서 자료구조로 담아 주어야 함
+· 화면 출력에 필요한 페이지 정보를 구성해야 함
+: PageResultDTO는 다양한 곳에서 사용할 수 있도록 제네릭 타입을 이용해서 DTO, EN을 지정함(말 그대로 DTO와 Entity를 의미). PageResultDTO는 Page<Entity>를 이용해서 생성할 수 있도록 생성자로 작성함. 이때 Function<EN, DTO>는 Entity를 DTO로 변환해주는 기능임. 이로써, 나중에 어떤 종류의 Page<E>가 생성되어도 PageResultDTO를 이용해 처리할 수 있음. 
+
+
+4.5.2 서비스 계층에서의 목록 처리
+: 서비스 계층에서는 PageRequestDTO를 파라미터, PageResultDTO를 리턴타입으로 사용하는 getList()를 설계하고, Entity를 DTO로 변환하는 entityToDTO()를 정의함.
+
+- 목록 데이터 페이지 처리
+: 화면까지 전달되는 데이터는 PageResultDTO임. 이를 이용해서 화면에서는 페이지 처리를 진행하게 됨. 화면에서 필요한 구성
+- 화면에서 시작 페이지 번호(start)
+: start = tempEnd - 9; (화면에 10개씩 보여준다고 가정)
+- 화면에서 끝 페이지 번호(end)
+: tempEnd = (int)(Math.ceil(페이지번호 / 10.0)) * 10;
+- 이전/다음 이동 링크 여부(prev, next)
+- 현재 페이지 번호(page)
+
+totalPage = result.gettotalPages(); // result = Page<Guestbook>
+end = totalPage > tempEnd ? tempEnd : totalPage;
+prev = start > 1;
+next = totalPage > tempEnd;
+
+
+4.6 컨트롤러와 화면에서의 목록 처리 (p172, 파일 p170)
+: 컨트롤러를 작성하고 실제 화면에 이를 반영하기
+
+4.6.1 목록 페이지 처리
+: /guestbook/list 혹은 /guestbook/list?page=1의 경우 1페이지가 출력
+
+페이지 번호 링크 처리
+: 링크 처리 시 (page={page}, size=${result.size}와 같은 내용을 추가하면 10개가 아닌 원하는 수 만큼의 목록을 조회할 수 있음
+
+
+4.7 등록 페이지와 등록 처리 (p179, 파일 p177)
+: Controller + html (기존 스프링과 똑같음)
+
+4.7.1 등록 처리와 목록 페이지의 모달 창
+: Thymeleaf의 inline 속성을 이용해서 처리함 -> 여기서 redirect가 되는게 아니면 null로 됨
+
+4.7.2 등록 페이지의 링크와 조회 페이지 링크 처리
+: 새로운 글을 작성할 수 있는 링크를 제공 + 각 글의 번호나 제목 선택시 조회 페이지로 이동하는 작업
+
+4.8 방명록 조회처리 (p187, 파일 p185)
+: read()로 조회를 구현 - service, serviceimpl 구현
+
+4.9 방명록의 수정/삭제처리 (p191, 파일 p189)
+: 수정/삭제의 모든 시작은 GET으로 진입하는 수정화면에서 작업을 선택해서 처리하게 됨
+- 수정은 POST로 처리하고 수정된 결과를 확인할 수 있는 조회 화면으로 이동
+- 삭제는 POST로 처리하고 목록화면으로 이동
+- 목록을 이동하는 작업은 GET으로 처리함. 이때 기존에 사용하던 페이지 번호 등을 유지해서 이동
+
+4.9.1 서비스 계층에서의 수정/삭제
+: service, serviceImpl에서 remove, modify 추가
+: controller : remove 구현
+
+4.9.2 modify.html 
+: 삭제 처리 추가. 각 버튼에 버튼이 무슨 버튼인지 추가해서 구분하기 쉽게 하기 (remove의 경우 removeBtn)
+
+4.9.3 수정처리 - POST
+: 수정 시 수정해야하는 내용(제목, 내용, 글번호)가 전달 되어야 함
+: 수정된 후에는 목록페이지나 조회 페이지로 이동. 되도록이면 기존의 페이지 번호 유지하는게 좋음
+1) input hidden으로 페이지 번호 저장
+
+컨트롤러의 수정처리
+1) Controller
+: GuestbookDTO, PageRequestDTO, RedirectAttributes를 파라미터로 받는 modify 정의하기
+- GuestbookDTO는 수정해야 할 글의 정보
+- PageRequestDTO : 기존의 페이지 정보 유지
+- RedirectAttributes : 리다이렉트로 이동하기 위함
+-> 수정 작업이 진행된 후 조회 페이지로 이동함. 이때 기존 페이지 정보도 같이 유지하여 조회 페이지에서 다시 목록페이지로 이동 잘 되도록.
+
+4.9.4 수정 화면에서의 이벤트 처리
+: Modify.html에서 JS 쪽 바꿔줌
+
+4.9.5 수정화면에서 다시 목록 페이지로
+: 글의 수정과 삭제가 완료되었으면 마지막으로 목록 페이지로 이동하는 버튼을 정의.
+: 목록 페이지로 이동하는 경우에는 파라미터 page 외에는 필요하지 않음. 목록으로 이동시에는 page를 제외한 다른 파라미터들은 지운 상태로 처리하는게 맞음
+
+
+4.10 검색 처리 (p201, 파일 p199)
+1) 서버 사이드 처리
+· PageRequestDTO에 검색타입(type) + 키워드(keyword) 추가
+· 이하 서비스 계층에서 Querydsl을 이용해 검색 처리
+2) 화면쪽 처리
+· 제목, 내용, 작성자로 검색하는 경우
+· 제목 or 내용으로 검색하는 경우
+· 제목 or 내용 or 작성자 로 검색하는 경우
+
+4.10.1 서버측 검색 처리(p202, 파일 p200)
+: PageRequestDTO에 검색조건(type) + 키워드(keyword) 추가
+
+4.10.2 서비스에서 검색 구현 + 테스트(p203, 파일 p201)
+: 동적으로 검색조건이 처리되는 경우는 Querydsl을 통해 BooleanBuilder를 작성, GuestbookRepository는 Querydsl로 작성된 BooleanBuilder를 findAll()을 처리하는 용도로 사용
+
+4.10.3 목록 페이지 검색 처리 (p208, 파일 p206)
+: 검색 처리를 위해서는 화면에서 type, keyword를 입력할 수 있는 UI가 필요하지만 GET방식이므로 한글이 아니면 쿼리 스트링을 조작해서 충분히 테스트 할 수 있음
+
+
+페이지 번호의 검색 조건 추가
+: 목록 페이지 하단의 검색은 단순히 page라는 값만 처리하므로 type과 keyword를 추가해 주어야 함
+
+조회 페이지로 이동하는 검색처리
+: 특정 글의 번호를 클릭해서 이동하는 부분에 type과 keyword를 추가해 주어야 함
+
+4.10.4 조회 페이지 검색 처리 (p214, 파일 p212)
+: 기존의 조회 페이지는 page 값만 처리했으므로 type 값과 keyword를 추가해 줘야 함
+: 조회 페이지의 검색처리는 
+1) 목록 페이지에서 특정한 조건으로 검색 수행
+2) 검색한 상태에서 특정 글을 선택해서 조회페이지로 이동
+3) 조회 페이지에서 목록 페이지로 이동하는 버튼을 클릭해서 이동
+의 순서로 이루어짐
+
+4.10.5 수정 작업 후 이동 처리
+: GuestbookController는 작업이 끝난 후 RedirectAttributes를 이용해서 이동하는 경우가 종종 있음 -> 등록처리 - 1페이지로 이동, 삭제 처리 - 1페이지로 이동, 수정처리 - 조회 페이지로 이동. 
+
+
+Chapter 5. N:1(다대일) 연관관계 (p220, 파일 p218)
+: 실제로 서비스 되는 웹 애플리케이션에서 하나의 Entity만 이용해서 화면이 구성되는 경우는 많지 않음.
+- 화면, 게시글, 댓글을 주제로 적용하는 방법
+: Board, Reply, Member Entity를 적용하는 방법을 앞으로 공부하게 됨
+-> 연관관계를 분석하고 @ManyToOne 을 이용한 연관관계 설정
+-> 연관관계가 없는 상황에서 'left(outer) join' 처리방법
+-> 즉시(Eager)로딩과 지연(Lazy)로딩의 차이와 효율적인 처리방법
+
+
+5.1 연관관계와 관계형DB 설계
+: 관계형 DB에서는 일대일(1:1), 일대다(1:N), 다대일(N:1), 다대다(M:N)의 관계를 통해 데이터가 서로 어떻게 구성되었는지를 표현함. 이 표현에서 가장 중요한 것은 PK와 FK를 어떻게 설정하는가 임.
+=>
+· 1명의 회원은 여러 게시글을 작성할 수 있음
+· 하나의 게시글은 1명의 회원에 의해 작성됨
+: 2번째 문장은 1:1의 관계처럼 보이게 글을 작성한 것임. 실제 테이블 설계에는 맞지 않음
+
+5.1.1 PK로 설계하고 FK로 연관관계 해석
+: JPA를 이용해서 연관관계를 해석할 때는 PK를 기준으로 DB를 모델링하는 방식으로 구성함.
+=> '회원' '게시글' '댓글'의 관계를 PK를 기준으로 설계
+: 회원이 있어야만 게시글 작성가능 -> 회원 테이블 먼저설계 + 게시글을 작성할 시 특정 회원과의 관계를 설정해줘야 함. 
+: 댓글은 게시글이 있어야만 작성 가능하므로 게시글을 먼저 설계하고 댓글 테이블이 게시글을 FK로 작성
+member : email(PK), moddate, regdate, name, password
+board : bno(PK), moddate, regdate, content, title, writer_email(FK from member)
+reply : rno(PK), moddate, regdate, replyer, text, board_bno(FK from board)
+-> FK를 기준으로 관계 해석
+· board는 member와 N:1의 관계이다
+· reply는 board와 N:1의 관계이다
+-> JPA는 객체지향의 입장에서 이들의 관계를 보기 때문에 DB와 달리 다음과 같은 선택이 가능
+· member가 board를 참조하게 설정?
+· board에서 member를 참조하게 설정?
+· member, board 양족에서 서로를 참조하게 설정?
+: 관계형 DB에서는 PK, FK로 표현되었던 관계가 객체지향으로 옮겨지는 다양한 선택지가 생김. 실제DB에서는 존재 X
+
+5.1.2 예제 프로젝트 생성
+: 추가 라이브러리
+- Spring Boot DevTools, Lombok, Spring Web, Thymeleaf, Spring Data JPA, MySQL JDBC
+: BaseEntity 생성
+
+5.1.3 Entity 추가
+- Member
+: email을 사용자 아이디 대신에 사용할 수 있도록 설정
+- Board
+: Member의 email을 FK로 참조. 초기 설정에서는 연관관계 작성 X. 나중을 고려해서 작성자에 해당하는 필드는 작성X
+- Reply
+: reply는 회원이 아니어도 댓글을 남길 수 있다고 가정해 Board와의 연관관계 맺지 않은 상태로 처리
+
+5.1.4 @ManyToOne
+: DB상에서 외래키의 관계로 연결된 Entity에 설정. 
+@ManyToOne을 작성한 후 
+private A a라고 하면
+Entity A에 있는 @Id 값과 a를 연동(FK) 설정하게 됨.
+
+5.1.5 Repository 추가
+: MemberRepository, BoardRepository, ReplyRepository 작성
+: extends JpaRepository<Entity 이름, @Id의 타입>
+
+
+5.2 연관관계 테스트 (p236, 파일 p234)
+: 현재 3개의 테이블이 PK, FK의 관계로 이루어져 있으므로 테스트를 위한 데이터 추가 작업도 PK부터 시작하는게 좋음
+
+5.2.1 테스트 데이터 추가하기
+: @SpringBootTest
+: @Autowired로 repository 고정해주기
+: @Test로 테스트할 문장 적기
+* FK로 설정된 것이 있는 경우에는 그 값을 먼저 넣어준 뒤 다른것을 진행해야 함
+
+- 필요한 쿼리 기능 정리하기
+-> 테스트에 사용될 더미데이터를 추가했으면 화면에 실제 데이터를 사용해서 어떤 내용을 출력하고 싶은지 정리해야 함
+· 목록화면 : 게시글의 번호, 제목, 댓글 개수, 작성자의 이름/이메일
+· 조회화면 : 게시글의 번호, 제목, 내용, 댓글 개수, 작성자의 이름/이메일  등등
+
+5.2.2 @ManyToOne & Eager/Lazy 로딩
+:@ManyToOne의 경우 FK쪽 Entity를 가져올 때 PK쪽의 Entity도 같이 가져옴. \
+-> DB의 입장에서는 JOIN이 필요함
+
+@Test로 실행해 보면
+Board의 경우 Board와 Member를 조인해서 값을 가져오고
+Reply의 경우 Board와 Reply를 조인하는데 추가적으로 Board와 Member를 또 Join해서 가져옴. 총 3번이 진행됨.  => 비효율적
+
+- fetch는 Lazy loading을 권장
+: 위의 Test와 같이 특정 Entity를 조회시 모든 Entity를 같이 로딩하는 것을 Eager 로딩이라고 함(즉시 로딩)
+· 즉시 로딩은 한 번에 연관관계가 있는 모든 Entity를 가져온다는 장점이 존재하지만, JOIN으로 인한 성능저하를 피할 수 없음. 
+· 즉시 로딩은 잘 사용하지 않고 대신 Lazy 로딩(지연 로딩)을 주로 사용함. 
+* fetch : JPA에서 연관관계의 데이터를 어떻게 가져올 것인가?
+
+Board클래스의 @ManyToOne(fetch = FetchType.LAZY)를 적용하고 다시 test를 돌리면 예외가 발생함 : could not initialize proxy [org.zerock.board.entity.Member#user100@aaa.com] - no Session. 
+-> 이 메세지는 DB와의 추가적인 연결이 필요하다는 뜻임
+* 테스트 코드의 일부
+Board board = result.get();
+System.out.println(board);
+System.out.println(board.getWriter());
+-> 지연 로딩 사용시 board를 불러오는곳까지는 문제가 없지만 board를 가져오고 연결이 종료되어서 board.getWrtier를 가져올 수 없는 문제가 생김
+=> 해결은 @Transactional을 추가하기
+: 첫번째로 board 테이블만 로딩
+: 그 다음에 board와 member를 조인해서 처리함
+
+- 연관관계에서는 @ToString()을 주의하라
+: @ToString()은 해당 클래스의 모든 멤버 변수를 출력하게 됨. 
+=> 
+Board객체의 @ToString()을 하면 wrtier로 선언된 Member 객체 역시 출력해야 함.
+Member를 출력하기 위해서는 Member의 toString()가 호출되어야 되고 이때 DB연결이 필요하게 됨
+-> 이런 까닭에, 연관관계가 있는 Entity의 경우 @ToString()사용시 습관적으로 exclude를 사용하는 게 좋음. exclude는 해당 속성값으로 지정된 변수는 toString()에서 제외하므로 지연로딩 사용한다면 반드시 지정해 주는 것이 좋음
+
+- 지연로딩의 장·단점
+· 장점: 조인을 하지 않으므로 단순하게 하나의 테이블을 이용하는 경우 빠른 처리가 가능함
+· 단점: 연관 관계가 복잡하면 여러번의 쿼리가 실행됨
+· 보편적인 코딩 가이드 : 지연로딩을 기본으로 사용하고, 상황에 맞는 방법을 찾기
+
+5.2.3 JPQL & left(outer) join
+- left(outer) join
+: Spring Boot 2버전 이후 포함되는 JPA버전은 Entity내에 전혀 연관관계가 없어도 Join 사용가능. Inner Join 혹은 Join같은 일반적인 조인 + Left (Outer) Join을 이용할 수도 있음
+1) Entity 내부에 연관관계가 있는 경우
+=> Board 내부에 Member를 변수로 선언하고 연관관계를 맺고 있음. 이럴 때는 Board의 writer변수를 이용해서 Join을 처리함
+@Query("select b, w from Board b left join b.writer w where b.bno=:bno")
+* getBoardWithWriter()는 Board를 사용하고 있지만, Member를 같이 조회해야 하는 상황임. 
+Board에는 Member와 연관관계를 맺고 있으므로 b.writer와 같은 형태로 사용함.
+-> 이처럼 내부에 있는 Entity를 사용할 때는 'left join' 뒤에 on을 이용하는 부분이 없음
+
+- test
+: 배열에 조인처리가 된 결과를 한번에 나오게 하는 것
+
+2) 연관관계가 없는 Entity Join에는 On을 붙인다
+: Board와 Member 사이에는 내부적으로 참조를 통해 연관관계가 있으나, Board와 Reply는 다름. Reply쪽이 @ManyToOne으로 참조하지만 Board입장에서는 Reply객체들을 참조하고 있지 않으므로 직접 Join에 필요한 조건은 on을 이용해서 작성해 줘야함
+=> '특정 게시물과 해당 게시물에 속한 댓글 조회'
+SQL> select board.bno, board.title, board.writer_email, rno, text from board left outer join reply on reply.board_bno = board.bno where board.bno = 100;
+JPQL> select b, r from board b left join reply r on r.board = b where b.bno = :bno
+-> 중간에 on이 사용되면서 Join 조건을 직접 지정하는 부분이 추가됨
+- Test
+@Test
+    public void testGetBoardWithReply() {
+        List<Object[]> result = boardRepository.getBoardWithReply(97L);
+
+        for (Object[] arr : result) {
+            System.out.println(Arrays.toString(arr));
+        }
+    }
+:
+
+[Board(bno=97, title=Title #97, content=Content #97), Reply(rno=36, text=Reply #36, replyer=replyer #36)]
+[Board(bno=97, title=Title #97, content=Content #97), Reply(rno=130, text=Reply #130, replyer=replyer #130)]
+[Board(bno=97, title=Title #97, content=Content #97), Reply(rno=284, text=Reply #284, replyer=replyer #284)]
+이런식으로 결과가 나오게 됨
+
+
+3) 목록 화면에 필요한 JPQL 만들기
+: 목록화면에서 필요한 데이터
+· Board : 게시물의 번호, 제목, 게시물의 작성 시간
+· Member : 회원의 이름/이메일
+· Reply : 해당 게시물의 댓글 수
+-> 3개의 Entity 중 가장 많은 데이터를 가져오는 쪽은 Board이므로 Board를 중심으로 Join을 작성함. 
+-> Member는 Board.writer로 관계를, Reply는 없음.
+-> Join 후에는 Board를 기준으로 GROUP BY 처리를 통해 하나의 게시물 - 하나의 라인이 될 수 있도록 처리해야 함 (JPQL을 통해 SQL에 사용하는 많은 함수를 적용 가능)
+* BoardRepository
+    @Query(value = "SELECT b, w, count(r) " +
+            " FROM Board b " +
+            " LEFT JOIN b.writer w " +
+            " LEFT JOIN Reply r ON r.board = b " +
+            " GROUP BY b",
+    countQuery = "SELECT count(b) FROM Board b")
+    Page<Object[]> getBoardWithReplyCount(Pageable pageable); // 목록화면에 필요한 데이터
+
+작성 후 TEST하기
+Hibernate: 
+    select
+        b1_0.bno,
+        b1_0.content,
+        b1_0.moddate,
+        b1_0.regdate,
+        b1_0.title,
+        b1_0.writer_email,
+        w1_0.email,
+        w1_0.moddate,
+        w1_0.name,
+        w1_0.password,
+        w1_0.regdate,
+        count(r1_0.rno) 
+    from
+        board b1_0 
+    left join
+        member w1_0 
+            on w1_0.email=b1_0.writer_email 
+    left join
+        reply r1_0 
+            on r1_0.board_bno=b1_0.bno 
+    group by
+        b1_0.bno 
+    order by
+        b1_0.bno desc 
+    limit
+        ?, ?
+Hibernate: 
+    select
+        count(b1_0.bno) 
+    from
+        board b1_0
+[Board(bno=100, title=Title #100, content=Content #100), Member(email=user100@aaa.com, password=1111, name=User100), 1]
+[Board(bno=99, title=Title #99, content=Content #99), Member(email=user99@aaa.com, password=1111, name=User99), 1]
+[Board(bno=98, title=Title #98, content=Content #98), Member(email=user98@aaa.com, password=1111, name=User98), 4]
+[Board(bno=97, title=Title #97, content=Content #97), Member(email=user97@aaa.com, password=1111, name=User97), 3]
+[Board(bno=96, title=Title #96, content=Content #96), Member(email=user96@aaa.com, password=1111, name=User96), 4]
+[Board(bno=95, title=Title #95, content=Content #95), Member(email=user95@aaa.com, password=1111, name=User95), 4]
+[Board(bno=94, title=Title #94, content=Content #94), Member(email=user94@aaa.com, password=1111, name=User94), 7]
+[Board(bno=93, title=Title #93, content=Content #93), Member(email=user93@aaa.com, password=1111, name=User93), 1]
+[Board(bno=92, title=Title #92, content=Content #92), Member(email=user92@aaa.com, password=1111, name=User92), 4]
+[Board(bno=91, title=Title #91, content=Content #91), Member(email=user91@aaa.com, password=1111, name=User91), 3]
+
+- 조회 화면에서 필요한 JPQL
+: 조회 화면에서는 Board, Member를 주로 이용하고, 해당 게시물이 몇 개의 댓글이 있는지를 알려주는 수준으로 작성
+: 실제 댓글은 화면에서 주로 Ajax를 이용해서 필요한 순간에 동적으로 데이터를 가져오는 방식이 일반적임
+
+ @Query(value = "SELECT b, w, count(r) " +
+            " FROM Board b LEFT JOIN b.writer w " +
+            " LEFT OUTER JOIN Reply r ON r.board = b" +
+            " WHERE b.bno = :bno")
+    Object getBoardByBno(@Param("bno") Long bno);
+
+-> Test
+@Test
+    public void testRead3() {
+        Object result = boardRepository.getBoardByBno(97L);
+        Object[] arr = (Object[]) result;
+        System.out.println(Arrays.toString(arr));
+    }
+:
+Hibernate: 
+    select
+        b1_0.bno,
+        b1_0.content,
+        b1_0.moddate,
+        b1_0.regdate,
+        b1_0.title,
+        b1_0.writer_email,
+        w1_0.email,
+        w1_0.moddate,
+        w1_0.name,
+        w1_0.password,
+        w1_0.regdate,
+        count(r1_0.rno) 
+    from
+        board b1_0 
+    left join
+        member w1_0 
+            on w1_0.email=b1_0.writer_email 
+    left join
+        reply r1_0 
+            on r1_0.board_bno=b1_0.bno 
+    where
+        b1_0.bno=?
+[Board(bno=97, title=Title #97, content=Content #97), Member(email=user97@aaa.com, password=1111, name=User97), 3]
+
+
+5.3 프로젝트에 적용 (p258, 파일 p256)
+
+5.3.1 DTO, Service 작성
+: DTO를 작성하는 기준은 기본적으로 '화면에 전달하는 데이터', '화면에서 전달되는 데이터'임. 그래서 Entity와 일치하지 않는 경우가 많음
+-> 작성하는 BoardDTO의 경우 Member에 대한 참조는 구성하지 않고 작성
+
+5.3.2 게시물 등록
+- BoardDTO를 파라미터로 전달받고, 생성된 게시물의 번호를 반환.
+-> 이때, BoardDTO를 Board Entity로 변환할 필요가 있음 dtoToEntity()작성으로 해결
+
+
+5.3.3 게시물 목록 처리
+: PageRequestDTO, PageResultDTO
+
+- Object[] -> DTO 변환
+: PageResultDTO의 핵심은 JPQL의 결과로 나오는 Object[]를 DTO로 변환하는 기능임 -> java.util.Function을 이용해서 작성함. 현재는 JPQL의 실행결과로 나오는 Object[]를 BoardDTO로 처리해야 함
+
+5.3.4 게시물 조회 처리
+: 게시물의 조회는 bno를 파라미터로 받아서 처리하도록 BoardService, BoardServiceImpl에 get()을 추가
+: BoardServiceImpl의 게시물의 조회는 Board, Member, getBoardByBno()를 이용해서 처리함
+- 테스트
+    @Test
+    public void testGet() {
+        Long bno = 100L;
+        BoardDTO boardDTO = boardService.get(bno);
+
+        System.out.println(boardDTO);
+    }
+->
+Hibernate: 
+    select
+        b1_0.bno,
+        b1_0.content,
+        b1_0.moddate,
+        b1_0.regdate,
+        b1_0.title,
+        b1_0.writer_email,
+        w1_0.email,
+        w1_0.moddate,
+        w1_0.name,
+        w1_0.password,
+        w1_0.regdate,
+        count(r1_0.rno) 
+    from
+        board b1_0 
+    left join
+        member w1_0 
+            on w1_0.email=b1_0.writer_email 
+    left join
+        reply r1_0 
+            on r1_0.board_bno=b1_0.bno 
+    where
+        b1_0.bno=?
+BoardDTO(bno=100, title=Title #100, content=Content #100, writerEmail=user100@aaa.com, writerName=User100, regDate=2024-01-05T12:59:06.664158, modDate=2024-01-05T12:59:06.664158, replyCount=1)
+
+5.3.5 게시물 삭제처리
+: 실제 개발에서는 댓글이 없는 게시물의 경우 게시물의 작성자가 삭제해도 무방하지만, 댓글이 있으면 다른 사용자들이 추가한 댓글이 아무런 동의 없이 삭제도니느 문제가 발생함. 실제 개발에서는 게시물에 상태(state)를 Column으로 지정하고, 이를 변경하는 형태로 처리하는 게 일반적인 방식임
+-> 다만, 예제에서는 이를 고려하지 않고 삭제할 수 있다고 가정하고 진행함
+-> 삭제하려면 FK로 게시물을 참조하고 있는 reply역시 삭제해야 함
+-> 작업의 순서
+1) 해당 게시물의 모든 댓글을 삭제
+2) 해당 게시물 삭제
+-> 중요한 점은 두 작업이 하나의 'Transaction'으로 처리되어야 한다는 것
+
+* ReplyRepository에 특정 게시물 번호로 댓글을 삭제하는 기능 추가
+:
+   @Modifying // JPQL를 이용해서 update, delete를 실행하기 위한 Annotation. -> DB를 수정하는 메서드에 적용
+    @Query("delete from Reply r where r.board.bno =:bno")
+    void deleteByBno(@Param("bno") Long bno);
+- impl
+@Transactional
+    @Override
+    public void removeWithReplies(Long bno) { // 삭제 기능, 트랜젝션 +_+
+        // 댓글부터 삭제
+        replyRepository.deleteByBno(bno);
+        // 그 다음, 게시물 삭제
+        boardRepository.deleteById(bno);
+    }
+
+- test
+@Test
+    public void testRemove() {
+        Long bno = 2L;
+        boardService.removeWithReplies(bno);
+    }
+:
+Hibernate: 
+    delete 
+    from
+        reply 
+    where
+        board_bno=?
+Hibernate: 
+    select
+        b1_0.bno,
+        b1_0.content,
+        b1_0.moddate,
+        b1_0.regdate,
+        b1_0.title,
+        b1_0.writer_email 
+    from
+        board b1_0 
+    where
+        b1_0.bno=?
+Hibernate: 
+    delete 
+    from
+        board 
+    where
+        bno=?
+
+-> 입력한 bno = 2L인 것을 삭제해 줌
+
+
+5.3.6 게시물 수정 처리
+: 수정은 필요한 부분만 변경하고 BoardRepository의 save()로 처리
+: 수정은 title, content에 한해 수정이 가능하도록 설정
+1) Entity.board에서 changeTitle(), changeContent() 메서드 추가
+2) BoardService, BoardServiceImpl 추가
+- BoardService
+: void modify(BoardDTO boardDTO);
+- BoardServiceImpl
+:
+@Transactional
+@Override
+    public void modify(BoardDTO boardDTO) {
+        Board board = boardRepository.getOne(boardDTO.getBno());
+
+        board.changeTitle(boardDTO.getTitle());
+        board.changeContent(boardDTO.getContent());
+
+        boardRepository.save(board);
+    }
+
+==> test
+@Test
+    public void testModify() {
+        BoardDTO boardDTO = BoardDTO.builder()
+                .bno(1L)
+                .title("제목 변경 ^^")
+                .content("내용 변경 ^^")
+                .build();
+
+        boardService.modify(boardDTO);
+    }
+>>>
+Hibernate: 
+    select
+        b1_0.bno,
+        b1_0.content,
+        b1_0.moddate,
+        b1_0.regdate,
+        b1_0.title,
+        b1_0.writer_email 
+    from
+        board b1_0 
+    where
+        b1_0.bno=?
+Hibernate: 
+    update
+        board 
+    set
+        content=?,
+        moddate=?,
+        title=?,
+        writer_email=? 
+    where
+        bno=?
+
+
+5.4 컨트롤러와 화면 처리 (p278, 파일 p276)
+: 남은 작업은 Controller & 화면처리
+
+5.4.1 목록 Controller / 화면처리
+: BoardController, list.html
+
+5.4.2 게시물 등록 처리
+: BoardController - register(POST, GET), register.html
+
+5.4.3 게시물 조회 처리
+: BoardController - read (GET), read.html
+
+5.4.4 게시물 수정/삭제 처리
+: BoardController - modify/remove, modfiy.html - JS, html 코드 수정, 버튼 링크 수정
+
+
+5.5 JPQL로 검색 (p292, 파일 290)
+: FK를 이용해서 @ManyToOne과 같은 연관관계 작성 시 가장 어려운 작업은 검색에 필요한 JPQL을 구성하는 것. 여러 Entity를 JPQL로 직접 처리하는 경우 Object[]타입 (Tuple) 형태로 나오기 때문에 작성하는 방법 자체가 다르고 복잡하지만 어떤 상황에서도 사용할 수 있는 가장 강력한 JPQL을 구성할 수 있는 방법이다
+
+5.5.1 gradle 수정
+	// Querydsl 추가
+	implementation 'com.querydsl:querydsl-jpa:5.0.0:jakarta'
+	annotationProcessor "com.querydsl:querydsl-apt:${dependencyManagement.importedProperties['querydsl.version']}:jakarta"
+	annotationProcessor "jakarta.annotation:jakarta.annotation-api"
+	annotationProcessor "jakarta.persistence:jakarta.persistence-api"
+
+dependencies에 추가
+-> clean 실행
+-> javaCompile 실행
+
+5.5.2 Repository를 확장하는 방법
+-> 쿼리메서드, @Query 등으로 처리할 수 없으면 별도의 Interface로 설계
+-> 별도의 interface에 대한 구현 클래스를 작성함. 이때 QuerydslRepositroySupport라는 클래스를 부모 클래스로 사용한다.
+-> 구현 클래스에 대한 interface의 기능을 Q도메인클래스와 JPQLQuery를 이용해서 구현
+
+- QuerydslRepositroySupport 동작 확인
+: 개발자가 원하는 대로 동작하는 Repository를 작성하는데 가장 중요한 클래스는 QuerydslRepositorySupport라는 클래스임. -> Spring Data JPA에 포함된 클래스로 Querydsl 라이브러리를 이용해서 직접 무언가를 구현할 때 사용함
+
+-> repository에 package: search 추가
+-> 확장하고 싶은 기능을 인터페이스로 선언. (구현 클래스 이름 = '인터페이스 이름 + Impl')
+-> SearchBoardRepositoryImpl에서 중요한 것은 QuerydslRepositorySupport 클래스를 상속해야 함. QuerydslRepositroysupport는 생성자가 존재하므로, super()를 이용해서 호출해야 함. 이 때 도메인 클래스를 지정하는데 null 값을 넣을 수 없음. 
+
+
+- JPQLQuery 객체
+: 실제 JPQL을 작성하고 실행하는 단계로 넘어가야 함. 이때 Querydsl 라이브러리 내에 JPQLQuery라는 인터페이스를 활용하게 됨. 
+
+- JPQLQuery의 leftJoin()/on()
+: JPQLQuery로 다른 Entity와 조인을 처리하기 위해서는 join(), leftJoin(), rightJoin() 등을 이용, 필요한 경우 on()을 이용해서 Join에 필요한 부분을 완성할 수 있음. 
+-> Board는 Reply와 left(outer) join을 이용해야 하면
+: 
+QBoard board = QBoard.board;
+QReply reply = QReply.reply;
+
+JPQLQuery<Board> jpqlQuery = from(board);
+jpqlQuery.leftJoin(reply).on(reply.board.eq(board));
+
+-> 만들어지는 JPQL은 아래와 같은 형태가 됨
+select board
+from Board board
+	left join Reply reply with reply.board = board
+where board.bno = ?1
+
+-> 실행되는 SQL
+:
+Hibernate:
+ select 
+  board0_.bno as bno1_0_,
+  board0_.moddate as moddate2_0_,
+  board0_.regdate as regdate3_0_,
+  board0_.content as content4_0_,
+  board0_.title as title5_0_,
+  board0_.writer_email as writer_e6_0_
+ from
+  board board0_
+ left outer join
+  reply reply1_
+   on ( reply1_.board_bno=board0_.bno )
+  where board0_.bno=?
+
+이런식으로 나오게 됨
+
+- Tuple 객체
+: JPQLQuery의 leftJoin(), join()을 이용해서 Board, Member, Reply를 처리할 수 있고, groupBy() 등을 이용해서 집합 함수를 처리하는 것도 가능함
+
+-> Member에 대한 leftJoin(), select() + groupBy()를 적용한 부분임. select 내에도 여러 객체를 가져오는 형태로 변경됨. 
+:
+        QBoard board = QBoard.board;
+        QReply reply = QReply.reply;
+        QMember member = QMember.member;
+
+        JPQLQuery<Board> jpqlQuery = from(board);
+        jpqlQuery.leftJoin(member).on(board.writer.eq(member));
+        jpqlQuery.leftJoin(reply).on(reply.board.eq(board));
+
+        jpqlQuery.select(board, member.email, reply.count()).groupBy(board);
+
+        log.info("==========");
+        log.info(jpqlQuery);
+        log.info("==========");
+
+        List<Board> result = jpqlQuery.fetch();
+
+        return null;
+
+-> 이렇게 정해진 Entity객체 단위가 아니라 각각의 데이터 추출 시에는 Tuple이라는 객체를 이용함.
+-> Tuple 사용한 코드 수정
+:
+
+    @Override
+    public Board search1() {
+        log.info("search1()!!!!!!");
+
+        QBoard board = QBoard.board;
+        QReply reply = QReply.reply;
+        QMember member = QMember.member;
+
+        JPQLQuery<Board> jpqlQuery = from(board);
+        jpqlQuery.leftJoin(member).on(board.writer.eq(member));
+        jpqlQuery.leftJoin(reply).on(reply.board.eq(board));
+
+        JPQLQuery<Tuple> tuple = jpqlQuery.select(board, member.email, reply.count());
+        tuple.groupBy(board);
+
+        log.info("==========");
+        log.info(tuple);
+        log.info("==========");
+
+        List<Tuple> result = tuple.fetch();
+
+        log.info("result");
+
+        return null;
+    }
+
+-> select()를 JPQLQuery<Tuple>을 이용해서 처리하도록 변경했고 result 변수의 타입도 List<Tuple> 타입으로 변경됨. 
+=> JPQL
+:
+select board, member1.email, count(reply)
+from Board board
+  left join Member member1 with board.writer = member1
+  left join Reply reply with reply.board = board
+group by board
+=> 실행되는 SQL
+:
+Hibernate: 
+    select
+        b1_0.bno,
+        b1_0.content,
+        b1_0.moddate,
+        b1_0.regdate,
+        b1_0.title,
+        b1_0.writer_email,
+        m1_0.email,
+        count(r1_0.rno) 
+    from
+        board b1_0 
+    left join
+        member m1_0 
+            on b1_0.writer_email=m1_0.email 
+    left join
+        reply r1_0 
+            on r1_0.board_bno=b1_0.bno 
+    group by
+        b1_0.bno
+=> tuple.fetch()
+:
+[[Board(bno=1, title=제목 변경 ^^, content=내용 변경 ^^), user55@aaa.com, 3], [Board(bno=3, title=Title #2, content=Content #2), user2@aaa.com, 4], [Board(bno=4, title=Title #3, content=Content #3), user3@aaa.com, 2], [Board(bno=5, title=Title #4, content=Content #4), user4@aaa.com, 0], [Board(bno=6, title=Title #5, content=Content #5), user5@aaa.com, 3], [Board(bno=7, title=Title #6, content=Content #6), user6@aaa.com, 6], [Board(bno=8, title=Title #7, content=Content #7), user7@aaa.com, 7], [Board(bno=9, title=Title #8, content=Content #8), user8@aaa.com, 2], [Board(bno=10, title=Title #9, content=Content #9), user9@aaa.com, 3], [Board(bno=11, title=Title #10, content=Content #10), user10@aaa.com, 4], [Board(bno=12, title=Title #11, content=Content #11), user11@aaa.com, 2], ..., [Board(bno=202, title=Title #100, content=Content #100), user100@aaa.com, 0]]
+
+
+5.5.3 JPQLQuery로 Page<Object[]> 처리
+: 결과를 보면 Board와 작성자의 이메일, 댓글의 개수가 출력됨.
+: 마지막은 원하는 파라미터인 Pageable을 전송하고, Page<Object[]>를 만들어서 반환하는 것임. 
+-> Page<Object[]> searchPage()를 설계함. 
+: type, keyword, Pageable을 파라미터로 추가함 (PageRequestDTO 자체를 파라미터로 처리하지 않은 것은 DTO를 가능하다면 Repository에서 다루지 않기 위함)
+
+- 검색 조건의 처리 : BooleanExpression. 
+: 파라미터로 전달되는 type은 제목(t), 내용(c), 작성자(w)를 하나 또는 조합으로 'tcw'와 같은 형태임.
+
+- Sort 처리 / count 처리
+: Pageable의 Sort 객체는 JPQLQuery의 orderBy()의 파라미터로 전달되어야 하지만 'JPQL에서는 Sort객체를 지원하지 않으므로 orderBy()의 경우 OrderSpecifier<T extends Comparable>을 파라미터로 처리해야 함. 
+: OrderSpecifier의 Order는 com.querydsl.core.types.Order타입이고, Expression은 com.querydsl.core.types.Expression임. 
+->
+Sort sort = pageable.getSort();
+sort.stream().forEach(order -> {
+ Order direction = order.isAscending() ? Order.ASC: Order.DESC;
+ String prop = order.getProperty();
+ PathBuilder orderByExpression = new PathBuilder(Board.class, "board");
+ tuple.orderBy(new OrderSpecifier(direction, orderByExpression.get(prop)));
+});
+: org.springframework.data.domain.Sort는 내부적으로 여러 개의 Sort 객체를 연결할 수 있으므로 forEach()를 통해 처리함
+: OrderSpecifier에는 정렬이 필요하므로 Sort객체의 정렬 관련 정보를 com.querydsl.core.types.Order 타입으로 처리하고, Sort의 속성 등은 PathBuilder를 통해 처리함. PathBuilder는 생성 시 문자열로된 이름은 JPQLQuery를 생성시 이용하는 변수명과 동일해야 함. 
+=> JPQLQuery를 이용해서 동적으로 검색조건의 처리하는 방법은 복잡하지만 한 번의 개발만으로 count쿼리도 같이 처리할 수 있음(: fetchCount() 사용)
+long count = tuple.fetchCount();
+
+- PageImple 클래스
+: Pageable을 파라미터로 전달받은 이유는 JPQLQuery의 offset()과 limit()을 이용해서 페이지 처리를 진행하기 위함임.
+=>
+tuple.offset(pageable.getOffset());
+tuple.limit(pageable.getPageSize());
+
+- SearchBoardRepositoryImpl의 searchPage()의 return 값은 Page<Object[]>이므로 메서드 내부에서 Page타입의 객체를 생성해야 함. Page는 인터페이스 이므로 실제 객체는 org.springframework.data.domain.PageImple을 이용해서 생성함. PageImpl클래스의 생성자에는 Pageable과 long 값을 이용하는 생성자가 존재함
+
+
+5.5.4 목록화면에서 검색처리
+: BoardServiceImpl, list.html 수정
+: BoardServiceImpl 중 public PageResultDTO<BoardDTO, Object[]> getList(PageReqeustDTO pageRequestDTO) {} 수정 ( getList 수정)
+=> 
+Page<Object[]> result = repository.getBoardWithReplyCount(pageRequestDTO.getPageable(Sort.by("bno").descending()));
+에서
+Page<Object[]> result = repository.searchPage(pageRequestDTO.getType(), pageRequestDTO.getKeyword(), pageRequestDTO.getPageable(Sort.by("bno").descending())); 
+으로 바꿈
+
+
+Chapter 6. @RestController와 JSON 처리 
+: 여기에서는 Reply테이블과 관련된 화면을 처리함. 흔히 REST 방식이라고 불리는 다양한 method의 호출을 이용해서 댓글을 처리함
+: 모든 댓글은 게시물의 조회 화면에서 처리되도록 하고, Ajax를 이용해서 Controller와 JSON 포맷으로 데이터를 교환하는 방식으로 작성
+- GET : /replies/board/{bno} - 파라미터: bno, 작업: 해당 게시물 댓글 조회, 리턴 데이터: JSON 배열
+- POST : /replies/ - 파라미터: JSON으로 구성된 댓글 데이터, 작업: 댓글 추가, 리턴 데이터: 추가된 댓글 번호
+- DELETE : /replies/{rno} - 파라미터: 댓글번호, 작업: 댓글 삭제, 리턴 데이터: 삭제결과 문자열
+- PUT : /replies/{rno} - 파라미터 : 댓글번호 + 수정할 내용, 작업: 댓글 수정, 리턴 : 수정결과 문자열
+
+6.1 JSON과 Ajax로 댓글 처리 (p317, pdf p315)
+: 특정한 게시물의 댓글을 보여주는 작업은 게시물의 조회 화면에서 Ajax를 통해 JSON 포맷의 데이터 교환으로 처리함. 
+- 게시물이 로딩 된 이후 화면에서 댓글의 숫자 클릭 시 해당 게시물에 속한 댓글을 Ajax로 가져와서 화면에 보여줌
+- 특정한 버튼을 클릭시 새 댓글 입력가능한 모달을 보여주고, Ajax의 POST방식으로 댓글을 전송. 이후에 댓글 목록을 새로 가져와서 화면앗ㅇ에 조금 전에 추가한 댓글을 볼 수 있도록 함
+- 댓글 삭제/수정은 댓글 등록과 동일하게 특정 댓글을 선택해서 모달창에서 처리. 원칙적으로는 자신이 작성한 댓글에 대해서만 가능하지만 현재는 보안이 적용되지 않은 관계로 이를 고려 X
+
+-> Reply 수정. Board를 toString() 시에 제외하고 LAZY 로딩으로 설정
+
+6.1.1 ReplyRepository 변경
+: Repository에 bno에 의해 댓글의 목록을 가져오는 기능을 추가해야 함 - 쿼리 메서드로 작성
+-> getRepliesByBoardOrderByRno() : Board를 객체로 받고 모든 댓글을 순번대로 가져옴. 
+
+
+6.2 ReplyDTO와 ReplyService/ReplyController (p321, pdf p319)
+: ReplyDTO 추가 - Reply를 Controller, Service 영역에서 처리하려고. -> Reply Entity와 유사하게 작성하지만 게시물의 번호만을 가지는 형태로 작성함
+-> ReplyDTO를 Reply Entity로 처리하거나 반대의 경우에 대한 처리는 ReplyService, ReplyServiceImpl로 처리함. 
+- ReplyService에 선언할 기능
+· register : 댓글 등록 
+· getList : 특정 게시물의 댓글 리스트를 가져옴
+· modify/remove : 댓글 수정/삭제
+· entityToDTO : reply Entity를 DTO로 변환
+· dtoToEntity : replyDTO를 reply Entity로 변환
+
+6.2.1 ReplyService Test
+-> 테스트 할때는 getList만 먼저 테스트
+
+6.2.2 @RESTController
+: Service까지 완료했으면 Controller를 만들어서 조회화면에서 Ajax로 댓글을 표시해 줘야함
+: 댓글 데이터를 JSON으로 만들어서 처리할 것이므로 이때는 @RestController를 이용해서 처리하는 게 편리함. 
+: @RestController의 경우 모든 메서드의 리턴 타입은 기본적으로 JSON을 사용함
+: return은 ResponseEntity라는 객체를 이용하는데 그러면 HTTP의 상태코드 등을 같이 전달할 수 있음
+: value에 {}로 묶고 @PathVariable이라는 것으로 처리했는데 그러면 특정 게시물 번호로 조회 시 '100'이라는 데이터를 변수로 처리하는게 가능해짐
+
+6.3 조회 화면에서의 처리 (p329, pdf 327)
+: 조회화면에서는 사용자가 해당 게시물의 댓글 수를 파악, 댓글의 숫자를 클릭시 Ajax로 데이터를 처리함. 
+
+6.3.1 댓글 조회 기능의 분리
+: 댓글 조회 기능은 새 댓글의 추가, 댓글의 수정/삭제 시에도 동작할 필요가 있음. 댓글의 상태에 변화가 일어나면 댓글 목록을 다시 가져올 필요가 있으므로 그 기능을 추가함
+
+6.3.2 댓글 추가와 Modal
+: 화면에서 댓글 추가하는 작업은 버튼을 추가해서 클릭하면 Modal을 띄우는 방식으로 작성해야 함. 이때 보이는 Modal은 나중에 특정한 댓글의 수정/삭제도 기능할 수 있도록 작성.
+-> Modal의 내부에는 name이 replyText, replyer, rno인 input tag를 가지도록 작성. 
+-> 실제 댓글 등록은 save 버튼 클릭시 처리되도록 작성. 새로운 댓글은 javascript의 객체를 생성한 후 해당 객체를 JSON.stringify()를 이용해 JSON 문자열로 바꾸어 전송하도록 작성
+
+- ReplyController 등록 처리
+-> 댓글 등록은 Ajax를 이용해서 POST 방식으로 처리하도록 작성하고 ReplyController에서 이를 처리하는 구조로 작성
+: ReplyController에서 register()를 만듦 -> @RequestBody사용 : JSON으로 들어오는 데이터를 자동으로 해당 타입의 객체로 매핑해 주는 역할을 담당
+
+6.3.3 댓글 삭제처리
+: 댓글의 번호만 전송하면 된다는 점에서 간단하지만, DELETE를 사용해서 데이터를 전송함
+-> 댓글의 삭제는 Remove 버튼의 클릭 이벤트 리스너를 이용해서 처리함. 
+-> Ajax를 이용해서 서버를 호출. 처리결과는 문자열로 전송, 'success'면 정상적으로 삭제되었다고 가정
+
+- ReplyController에서의 삭제처리
+: @DeleteMapping을 사용
+-> 삭제과정은 단순히 댓글의 번호(rno)로 삭제하고 문자열을 결과로 전송함. 결과는 alert로 보여줌
+
+6.3.4 댓글 수정
+: PUT 사용, 댓글의 번호, 게시물의 번호, 내용, 작성자를 같이 전달해야함
+-> 등록과 유사하게 모든 내용을 하나의 객체로 구성해서 이를 JSON 형태로 전달하고, 서버에서는 JSON을 ReplyDTO로 변환해서 처리함
+
+- ReplyController
+: @PutMapping 으로 댓글 데이터를 ReplyDTO객체로 변환해서 처리함
+
+=========================
+Chapter 7. M:N(다대다) 관계의 설계와 구현 (p344, pdf p342)
