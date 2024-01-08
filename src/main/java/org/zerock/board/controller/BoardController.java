@@ -1,0 +1,83 @@
+package org.zerock.board.controller;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.log4j.Log4j2;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import org.zerock.board.dto.BoardDTO;
+import org.zerock.board.dto.PageRequestDTO;
+import org.zerock.board.service.BoardService;
+
+@Controller
+@RequestMapping("/board/")
+@Log4j2
+@RequiredArgsConstructor
+public class BoardController {
+    private final BoardService boardService;
+
+    @GetMapping("/list")
+    public void getList(PageRequestDTO pageRequestDTO, Model model) {
+        log.info("getList. PageRequestDTO : " + pageRequestDTO);
+
+        model.addAttribute("result", boardService.getList(pageRequestDTO));
+    }
+
+    @GetMapping("/register")
+    public void register() {
+        log.info("GET register");
+    }
+
+    @PostMapping("/register")
+    public String registerPost(BoardDTO dto, RedirectAttributes redirectAttributes) {
+        log.info("POST register // dto : " + dto);
+
+        Long bno = boardService.register(dto);
+
+        log.info("bno 값 : " + bno);
+
+        redirectAttributes.addFlashAttribute("msg", bno);
+
+        return "redirect:/board/list";
+    }
+
+    @GetMapping({"/read", "/modify"})
+    public void read(@ModelAttribute("requestDTO") PageRequestDTO pageRequestDTO,
+                     Long bno, Model model) {
+        log.info("GET read //  bno : " + bno);
+
+        BoardDTO boardDTO = boardService.get(bno);
+
+        log.info(boardDTO);
+
+        model.addAttribute("dto", boardDTO);
+    }
+
+    @PostMapping("/remove")
+    public String remove(long bno, RedirectAttributes redirectAttributes) {
+        log.info("POST Remove. bno : " + bno);
+
+        boardService.removeWithReplies(bno);
+
+        redirectAttributes.addFlashAttribute("msg", bno);
+
+        return "redirect:/board/list";
+    }
+
+    @PostMapping("/modify")
+    public String modify(BoardDTO dto, @ModelAttribute("requestDTO") PageRequestDTO requestDTO,
+                         RedirectAttributes redirectAttributes) {
+        log.info("POST Modify. dto : " + dto);
+
+        boardService.modify(dto);
+
+        redirectAttributes.addAttribute("page", requestDTO.getPage());
+        redirectAttributes.addAttribute("type", requestDTO.getType());
+        redirectAttributes.addAttribute("keyword", requestDTO.getKeyword());
+
+        redirectAttributes.addAttribute("bno", dto.getBno());
+
+        return "redirect:/board/read";
+    }
+}
