@@ -1763,6 +1763,97 @@ http.logout((logout) ->
 # entity - ClubMemberRole
 # ClubMember는 ClubMemberRole 타입값을 처리하기 위해 Set<ClubMemberRole>을 추가하고 Fetch는 LAZY로 지정
 # 이러면 club_member 테이블과 club_member_role-set이라는 테이블이 생성됨
-p505(503)
 
+10.3.1 Repository & 더미데이터 추가
+- ClubMemberRepository, Tests 추가 : 100개 데이터
+: 1명의 회원(ClubMember)이 여러개의 권한(ClubMemberRole)을 가질 수 있도록 데이터를 추가
+
+10.3.2 회원 데이터 조회 테스트
+: ClubMember 조회 시 이메일을 기준으로 조회, 일반 로그인 사용자와 뒤에 추가되는 SNS 사용자를 구분하기 위해 ClubMemberRepository에 별도의 메서드로 처리함
+: findByEmail()은 사용자의 이메일과 소셜로 추가된 회원 여부를 선택해서 동작하도록 설계하고 @EntityGraph를 이용해서 left outer join으로 ClubMemberRole이 처리될 수 있도록 함. 
+- test
+: testRead()의 결과는 left outer join으로 처리되는 것을 확인할 수 있음. 권한도 역시 같이 로딩하는 것을 확인할 수 있음
+
+10.4 Security를 위한 UserDetailsService
+: JPA로 회원 정보 처리가 되는 것을 확인했으니, 다음으로 진행할 작업은 Spring Security가 ClubMemberRepository를 이용해서 회원을 처리하는 부분을 제작해야 함. 원래는 회원 아이디와 패스워드로 DB를 조회하고, 올바른 데이터가 있다면 세션이나 쿠키로 처리하는 형태로 제작을 하게 되지만, Spring Security는 다른 방식으로 동작함. 
+· Spring Security에서는 회원/계정에 대해 User라는 용어를 사용함. (주의해야 함)
+· 회원 아이디 대신 username를 사용함. username은 회원을 구별할 수 있는 식별 데이터를 말하게 됨. 문자열로 처리하는 건 같지만, 일반적으로 사용하는 회원의 이름이 아니고 오히려 id에 해당함
+· username과 password를 동시에 사용 X. Spring Security는 UserDetailsService를 이용해서 회원의 존재만 먼저 가져오고, 이후에 password가 틀리면 Bad Credential(잘못된 자격증명) 이라는 결과를 만들어 냄
+(인증)
+· 사용자의 username, password로 인증 과정이 끝나면 원하는 자원 (URL)에 접근할 수 있는 적절한 권한이 있는지 확인 후 인가 과정을 실행함. 이 과정에서는 Access Denied와 같은 결과가 만들어 짐.
+
+-> 가장 핵심적인 부품은 UserDetailsService임. loadUserByUsername()이라는 단 하나의 메서드를 가지고 있음. Locates the user based on the username = "사용자 이름을 기반으로 사용자를 찾습니다."
+
+10.4.1 UserDetails - 인터페이스
+: loadUserByUsername()은 말 그대로 username이라는 회원 아이디와 같은 식별 값으로 회원 정보를 가져옴. 리턴 타입 : UserDetails 인데 다음과 같은 정보를 알아낼 수 있도록 구성되어 있음:
+· getAuthorities() : 사용자가 가지는 권한에 대한 정보
+· getPassword() : 인증을 마무리하기 위한 패스워드 정보
+· getUsername() : 인증에 필요한 아이디와 같은 정보
+· 계정 만료 여부 : 더이상 사용이 불가능한 계정인지 알 수 있는 정보
+· 계정 잠김 여부 : 현재 계정의 잠김 여부
+-> 이를 처리하기 위해 ClubMember를 처리할 수 있는 방법은 크게 2가지 방식을 고민할 수 있음
+· 기존 DTO에 UserDetails를 구현하는 방법
+· DTO와 같은 개념으로 별도의 클래스를 구현하고 이를 활용하는 방법
+-> 2번째 방법으로 할려고 할때 여러개의 구현 클래스가 있음
+: InetOrgPerson, LdapUserDetailsImpl, Person, User 등등
+-> 이중에서 org.springframework.security.core.userdetilas.User를 사용할 것임. 별도의 처리 없이 생성자에 몇 가지 정보를 전달하는 것으로 충분함
+
+- ClubAuthMemberDTO를 구성하는 첫 단계는 User클래스를 상속하고 부모클래스인 User의 생성자를 호출 할 수 있는 코드를 만드는 것임. (부모 클래스인 User에 사용자 정의 생성자가 있으므로 반드시 호출해야)
+: ClubAuthMemberDTO는 DTO 역할을 수행하는 클래스인 동시에 Spring Security에서 인가/인증 작업에 사용할 수 있음 (password는 부모 클래스를 사용하므로 별도의 멤버 변수로 선언하지 않음)
+
+10.4.2 UserDetailsService 구현
+: ClubMember가 ClubAuthMemberDTO라는 타입으로 처리된 가장 큰 이유는 유저 정보를 가져오는 핵심적인 역할을 하는 UserDetailsService라는 인터페이스 때문임. 
+: Spring Security 구조에서 인증을 담당하는 AuthenticationManager는 내부적으로 UserDetailsService를 호출해서 유저의 정보를 가져옴
+: JPA로 사용자의 정보를 가져오고 싶으면 이 부분을 UserDetailsService가 이용하는 구조로 작성해야 함
+
+- ClubUserDetailsService에서 주목할 점은 @Service를 사용해서 자동으로 스프링에서 빈으로 처리할 수 있게 돼있다는 점 + loadUserByUsername()에서 별도의 처리 없이 로그를 처리하고 있다는 점.
+
+- SecurityConfig 변경
+: ClubUserDetailsService가 Bean으로 등록되면 이를 자동으로 Spring Security에서 UserDetailsService로 인식하므로 전에 임시로 설정한 InMemoryUserDetailsManager객체를 더이상 사용하지 않도록 수정해야 함
+-> public InMemoryUserDetailsManager ~ 를 주석처리
+
+
+- ClubMemberRepository 연동
+: 정상적인 처리를 위해 ClubUserDetailsService와 ClubMemberRepository를 연동
+-> 코드의 변경사항:
+· ClubMemberRepository를 주입받을 수 있는 구조로 변경하고 @RequiredArgsConstructor 처리
+· username이 실제로는 ClubMember에서 email이므로 이를 사용, ClubMemberRepository의 findByEmail()을 호출 + fromSocial은 false
+· 사용자가 존재 X (.isEmpty()) -> UsernameNotFoundException으로 처리
+· ClubMember를 UserDetails 타입으로 처리하기 위해 ClubAuthMemberDTO 타입으로 변환 
+· ClubMemberRole은 Spring Security에서 사용하는 SimpleGrantedAuthority로 변환. 이때 'ROLE_' 접두서 추가해서 사용
+
+
+10.5 Thymeleaf/Controller에서 사용자 정보 출력하기 (p520, pdf p518)
+
+10.5.1 Thymeleaf에서의 출력
+<!DOCTYPE html>
+<html xmlns:sec="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<h1>For Member ....................</h1>
+
+<div sec:authorize="hasRole('USER')">Has USER ROLE</div>
+<div sec:authorize="hasRole('MANAGER')">Has MANAGER ROLE</div>
+<div sec:authorize="hasRole('ADMIN')">Has ADMIN ROLE</div>
+
+<div sec:authorize="isAuthenticated()">
+    Only Authenticated user can see this Text
+</div>
+
+Authenticated username:
+<div sec:authentication="name"></div>
+Authenticated user roles:
+<div sec:authentication="principal.authorities">
+
+</div>
+
+</div>
+
+</body>
+</html>
+
+sec : thymeleaf security 관련 설정 할 수 있게 해줌
 

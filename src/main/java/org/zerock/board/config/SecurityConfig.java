@@ -23,7 +23,7 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    @Bean
+/*    @Bean
     public InMemoryUserDetailsManager userDetailsManager() {
         UserDetails user = User.builder()
                 .username("user1")
@@ -35,15 +35,23 @@ public class SecurityConfig {
         log.info(user);
 
         return new InMemoryUserDetailsManager(user);
-    }
+    }*/
 
     @Bean
-    public SecurityFilterChain filterChain(final HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
 
         log.info("----------------------filterChain-------------------------");
 
+        http.authorizeHttpRequests()
+                .requestMatchers("/sample/exall").permitAll()
+                .requestMatchers("/sample/exmember").hasRole("USER");
 
-        http.authorizeHttpRequests((authorizeHttpRequests) -> {
+        http.formLogin();
+        http.csrf().disable();
+        http.logout();
+
+
+        /*http.authorizeHttpRequests((authorizeHttpRequests) -> {
             authorizeHttpRequests
                     .requestMatchers("/sample/exall").permitAll()
                     .requestMatchers("/sample/exmember").hasRole("USER");
@@ -55,7 +63,7 @@ public class SecurityConfig {
                         .invalidateHttpSession(false)
                         .logoutUrl("/custom-logout")
                         .logoutSuccessUrl("/logout-success")
-        );
+        );*/
 
         return http.build();
     }
