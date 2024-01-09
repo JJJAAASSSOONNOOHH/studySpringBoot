@@ -3,6 +3,8 @@ package org.zerock.board.repository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.Commit;
+import org.springframework.transaction.annotation.Transactional;
 import org.zerock.board.entity.MovieMember;
 
 import java.util.stream.IntStream;
@@ -11,6 +13,9 @@ import java.util.stream.IntStream;
 public class MovieMemberRepositoryTests {
     @Autowired
     private MovieMemberRepository movieMemberRepository;
+
+    @Autowired
+    private ReviewRepository reviewRepository;
 
     @Test
     public void insertMovieMembers() {
@@ -22,5 +27,21 @@ public class MovieMemberRepositoryTests {
                     .build();
             movieMemberRepository.save(movieMember);
         });
+    }
+
+
+    @Commit
+    @Transactional
+    @Test
+    public void testDeleteMembers() {
+
+        Long mId = 1L;
+
+        MovieMember movieMember = MovieMember.builder().mId(mId).build();
+
+        reviewRepository.deleteByMember(movieMember);
+        movieMemberRepository.deleteById(mId);
+
+
     }
 }

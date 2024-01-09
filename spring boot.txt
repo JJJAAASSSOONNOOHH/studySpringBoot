@@ -1410,3 +1410,359 @@ MovieMember
 -> ReviewRepository, ReviewRepositoryTests 작성
 
 7.3.2 필요한 데이터 처리 (p367, pdf p365)
+: 필요한 데이터가 생겼으니 화면에서 필요한 것을 분류하면
+· 목록 화면 : 영화의 제목, 이미지 하나, 영화 리뷰의 평점/리뷰 개수 출력
+· 영화Detail : 영화, 영화의 이미지들, 리뷰의 평균점수/리뷰개수 출력
+· 리뷰에 대한 정보 : 회원의 이메일, 닉네임
+-> 데이터의 처리 방식은 이전과 유사하게 @Query를 이용해서 처리함. 다만 이번에서는 @EntityGraph, 서브쿼리를 활용함
+
+- 페이지 처리되는 영화별 평균점수/리뷰 개수 구하기
+: 영화 - 이미지 - 리뷰의 형태의 구조로 되어 있음
+: JPQL에서 group by를 적용한다고 가정하면 리뷰의 개수와 리뷰의 평균 평점을 구할 수는 있음. 
+1) Movie와 Review를 이용해서 페이징 처리를 하면 다음과 같이 구성할 수 있음
+- MovieRepository, MovieRepositoryTests
+: 
+* '영화 이미지 중에서 가장 나중에 추가된 이미지를 가져올 수 있을까?'를 성능 손해보고 작성하기
+@Query
+("select m, i, count(r) from Movie m left join MovieImage i on i.move = m" + "and i.inum = (select max(i2.inum) from MovieImage i2 where i2.movie = m) " + "left outer join Review r on r.movie = m group by m")
+* JPQL Query 방식
+QMovie movie = QMovie.movie;
+QReview review = QReview.review;
+QMovieImage movieImage = QMovieImage.movieImage;
+
+JPQLQuery<Movie> jpqlQuery = from(movie);
+jpqlQuery.leftJoin(movieImage).on(movieImage.movie.eq(movie));
+jpqlQuery.leftJoin(review).on(review.movie.eq(movie));
+
+JPQLQuery<Tuple> tuple = jpqlQuery.select(movie, movieImage, review.grade.avg(), review.countDistinct());
+
+BooleanBuilder booleanBuilder = new BooleanBuilder();
+BooleanExpression expression = movie.mno.gt(OL);
+
+- 특정 영화의 모든 이미지와 평균평점/리뷰 개수
+: MovieRepository, Tests
+
+- 특정 영화의 모든 리뷰와 회원의 닉네임
+: ReviewRepository
+: Review의 Member에 대한 Fetch가 LAZY이므로 한번에 Review, Member를 조회할 수 없음. 
+해결 방안으로는
+1) @Query를 이용해서 Join 처리
+2) @EntityGraph를 이용해서 Review 객체를 가져올 때 개체를 로딩
+- @EntityGraph
+: Entity의 특정한 속성을 같이 로딩하도록 표시함
+: 일반적으로 Fetch의 속성은 LAZY인데, 특정 기능을 수행할 때만 EAGER로 로딩하도록 지정 가능
+· attributePaths : 로딩 설정을 변경하고 싶은 속성의 이름을 배열로 명시
+· type : @EntityGraph를 어떤 방식으로 적용할 것인지 설정
+· FATCH : attributePaths에 명시한 속성은 EAGER로, 나머지는 LAZY로 처리
+· LOAD : attributePaths에 명시한 속성은 EAGER, 나머지는 Entity에 명시되거나 기본 방식으로 처리
+
+- 회원 삭제 문제와 Transaction 처리
+: M:N 관계를 매핑 테이블을 구성하고 이를 Entity로 처리하는 경우에는 주의 해야 함. '명사'에 해당하는 데이터를 삭제 시 매핑 테이블에서도 삭제해야 함. 
+-> 매핑테이블에서 먼저 삭제
+-> 트랜잭션 관련 처리함 : @Transactional, @Commit
+* Java8부터는 @Param을 무조건 사용해야 함
+===============================
+
+Chapter 8 파일 업로드 처리 (p386, pdf p384)
+: Spring Boot로 파일을 업로드 하는 것은 아주 단순한 설정 만으로 가능함. 
+1) 별도의 ㅏ일 업로드 라이브러리 (commons-fileupload 등)
+2) Servlet 3부터 추가된 자체적인 파일 업로드 라이브러리
+
+8.1 파일 업로드를 위한 설정
+: Spring Boot를 Tomcat을 이용해서 실행하면 별도의 추가적인 라이브러리 없이 application.properties를 수정한느 것만으로도 가능함
+· spring.servlet.multipart.enabled : 파일 업로드 가능 여부를 선택
+· spring.servlet.multipart.location : 업로드된 파일의 임시 저장 경로
+· spring.servlet.multipart.max-request-size : 1번에 업로드 가능한 최대 용량
+· spring.servlet.multipart.max-file-size : 파일 한개의 최대 크기
+
+8.1.1 파일 업로드를 위한 컨트롤러와 화면 테스트
+: 파일 업로드와 관련된 모든 작업은 Ajax로 처리할 것이므로 업로드 결과에 대한 별도의 화면 설계는 필요 X
+-> UploadController
+: uploadFile()은 MultipartFile[]을 파라미터로 받도록 설계 -> 배열을 활용하면 여러 개의 파일 정보를 처리할 수 있으므로 화면에서 여러 개의 파일을 동시에 업로드할 수 있음
+
+- Ajax 업로드 처리
+$.ajax({
+                url: '/uploadAjax',
+                processData: false,
+                contentType: false,
+                data: formData,
+                type: 'POST',
+                dataType: 'json',
+                success: function(result) {
+                    console.log(result);
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    console.log(textStatus);
+                }
+            });
+
+-> 업로드된 파일의 이름이 출력될 것임 (아직 결과 처리가 안돼서 parsererror라는 메세지)
+
+8.1.2 업로드된 파일의 저장
+: Spring 자체에서 제공하는 FileCopyUtils, MultipartFile 자체에서 제공하는 transferTo(). 
+: 파일 저장 시 경로는 설정파일(application.properties)에 별도의 설정값을 추가하고 UploadController에서 이 설정값을 이용하도록 작성함
+# 파일 저장 단계에서 고려 사항
+· 업로드된 확장자가 이미지만 가능하도록 검사(첨부파일을 이용한 원격 셀)
+· 동일한 이름의 파일이 업로드 되면 기존 파일을 덮어쓰는 문제
+· 업로드된 파일을 저장하는 폴더의 용량
+
+- 동일한 이름의 파일 문제
+: 첨부파일의 이름이 같은 경우 기존의 파일이 사라지고 새로운 파일로 변경되므로 이를 막으려면 고유 이름을 생성해서 파일 이름으로 사용해야 함. 
+1) 시간 값을 파일 이름에 추가 
+2) UUID를 이용해서 고유 값을 만들어 사용
+
+- 동일한 폴더에 너무 많은 파일
+: 운영체제에 따라 하나의 폴더에 넣을 수 있는 파일 수에 대한 제한이 있음 (FAT32 : 65534개)
+: 일반적으로 많이 사용하는 방법은 파일이 저장되는 시점의 년/월/일 폴더를 따로 생성해서 한 폴더에 너무 많은 파일이 쌓이지 않게하는 것
+
+- 파일의 확장자 체크
+: 첨부파일을 이용해서 shell 스크립트 파일 등을 업로드 해서 공격하는 기법도 있으므로, 브라우저에서 파일을 업로드 할때나 서버에서 파일을 저장할 때 이를 검사해야 함. 
+-> MultipartFile에서 제공하는 getContentType()을 이용해서 처리할 수 있음
+
+## Controller 수정
+if(!uploadFile.getContentType().startsWith("image")) {
+                log.warn("이 파일은 이미지 타입이 아닙니다");
+                return;
+            }
+: getContentType()을 사용해서 image파일인지 체크
+
+    private String makeFolder() {
+        String str = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
+
+        String folderPath = str.replace("/", File.separator);
+
+        // make Folder
+        File uploadPathFolder = new File(uploadPath, folderPath);
+
+        if (!uploadPathFolder.exists()) {
+            uploadPathFolder.mkdirs();
+        }
+        return folderPath;
+: makeFolder() 를 만들어서 년월일 로 폴더를 만듦
+* mkdirs(): 만들고자 하는 디렉토리의 상위 디렉토리가 존재하지 않을 경우, 상위 디렉토리까지 생성
+
+// 날짜 폴더 생성
+            String folderPath = makeFolder();
+
+            // UUID
+            String uuid = UUID.randomUUID().toString();
+
+            // 저장할 파일 이름 중간에 '_'을 이용해서 구분
+            String saveName = uploadPath + File.separator + folderPath + File.separator + uuid + "_" + fileName;
+
+            Path savePath = Paths.get(saveName);
+
+            try {
+                uploadFile.transferTo(savePath);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+: 폴더를 만들고 UUID를 생성해서 저장되는 파일 이름에 UUID, 업로드 path 등이 나오게 해서 "_"로 구분하면서 파일 저장
+
+8.1.3 업로드 결과 반환과 화면 처리
+: 업로드는 처리됐지만 페이지에서는 결과 반영이 X. 결과 데이터는 JSON으로 전송할 거라 어떤 구조의 데이터를 전송할 건지 결정해야 함. (업로드된 파일의 원래 이름, 파일의 UUID 값, 업로드된 파일의 저장경로) 
+: 하나의 문자열로도 처리 가능하지만 페이지에서 처리가 간단하도록 클래스와 객체를 구성해서 처리함. UploadResultDTO
+: UploadResultDTO는 실제 파일과 관련된 모든 정보를 가짐. 나중에 전체 경로가 필요할 때를 대비해서 getImageURL()을 만듦. 
+: UploadController 수정 -> 업로드 결과 반환하려고 ResponseEntity를 이용해서 이를 처리하는 형태로 변경함 -> 메서드의 Return은 void에서 ResponseEntity<List<UploadResultDTO>>로 변경하고 이미지파일이 아니라면 예외 처리 대신 '404 Forbidden'을 return 하도록 변경. 업로드 처리가 끝나면 JSON의 배열 혀앹로 결과를 전달받게 됨
+* 잘못 입력한것
+: application.properties에서 org.zerock.upload.path = D:\\upload 이부분이 오류 남. 찾아보니 여기서는 빈칸이 있으면 안됨. 
+
+- 업로드 이미지 출력하기
+: JSON으로 반환된 업로드 결과를 확인하려면
+1) 브라우저에서 링크를 통해 <img>를 추가해 줘야 함
+2) 서버에서 해당 URL이 호출될 때 이미지 파일 데이터를 브라우저로 전송해 줘야 함.
+-> UploadController에서 '/display?fileName=xxxx'와 같은 URL 호출 시 이미지가 전송되도록 메서드를 추가
+: getFile()은 URL 인코딩된 파일 이름을 파라미터로 받아 해당 파일을 byte[]로 만들어 브라우저로 전송. 확장자에 따라 전송하는 MIME 타입이 달라야 하는데, 그 부분은java.nio.file 패키지의 Files.probeContentType()을 이용해서 처리함. 파일 데이터의 처리는 org.springframework.util.FileCopyUtils를 이용해서 함. 브라우저에서는 업로드된 결과 중 imageURL 속성이 있음 (UploadResultDTO의 getImageURL())
+: imageURL은 URL 인코딩된 파일경로와 UUID가 결합된 정보이므로 이를 이용해서 <img>를 작성함. 
+-> html에 업로드된 이미지들을 보여줄 수 있는 <div>를 추가해서 거기에 보여지도록 설정
+: <div class="uploadResult"></div>
+-> 그 후 Ajax 업로드 이후 이미지들을 호출하는 showUploadedImages()함수를 작성하고 Ajax 호출이 성공하면 '/display?fileName=xxx'을 호출
+
+8.1.4 썸네일 이미지 생성과 화면 처리
+: 원본 이미지가 그대로 나오면 데이터를 많이 소비해야 하므로 가능하다면 썸네일을 만들어서 전송해주고 원본을 보려고 할때 원본 파일을 보여주는 게 나음
+: 썸네일 이미지의 처리
+· 업로드 된 파일 저장 + 썸네일 라이브러리를 이용해서 썸네일 파일 생성
+· 썸네일 파일은 파일의 맨 앞에 "s_"를 붙여 일반 파일과 구분
+· UploadResultDTO에 getThumbnailURL() 추가해서 썸네일의 경로를 <img>로 처리
+-> UploadController에서 net.coobird.thumbnailator.Thumbnailator를 import + try ~ catch 추가
+
+- 브라우저에서 썸네일 처리
+: Json으로 전달되는 UploadResultDTO에는 getImageURL() 처럼 썸네일의 링크를 처리하기 위한 메서드를 추가(getThumbnailURL())
+: html에선 imageURL 대신 thumnailURL을 사용하도록 함
+
+8.1.5 업로드 파일 삭제
+: 파일의 URL로 쉽게 삭제 가능. 파일의 URL 자체가 '년/월/일/uuid_파일명'으로 구성되므로 삭제할 파일의 위치를 찾아 삭제 가능. UploadController에서 removeFile()을 추가
+-> 경로와 UUID가 포함된 파일이름을 파라미터로 받아 삭제 결과를 Boolean 타입으로 만들어 전송함
+-> 주의점은 원파일과 함께 썸네일 파일도 삭제해야 한다는 것
+
+- 브라우저에서 파일 삭제
+: 각 파일을 삭제할 수 있게 버튼을 추가하고, 버튼과 이미지를 하나의 <div>로 묶는다. 이를 통해 버튼과 이미지를 함께 삭제 가능
+: JS 수정
+-> Remove 버튼을 누르면 삭제됨
+* 최근에는 파일 업로드 자체를 클라우드를 이용해서 처리하는 경우도 많음. AWS S3의 경우가 가장 대표적임. 추후에 파일업로드 처리를 클라우드 환경에서 사용할 수 있는 방법에 대해 고민하기
+
+-----------------------------------------------------
+Chapter 9 : 실제 프로젝트에 적용 (스킵)
+-----------------------------------------------------
+Chapter 10 : Spring Boot와 Spring Security 연동 (p474, pdf p472)
+: dependencies 설정
+: application.properties에
+logging.level.org.springframework.security.web=trace
+logging.level.org.zerock=debug
+추가해서 로그레벨을 낮게 설정해서 자세한 로그 확인가능 하게 설정
+
+
+10.1.1 Security Config 작성
+: Security 관련 기능을 쉽게 설정하기 위해 WebSecurityConfigurerAdapter를 상속 처리
+: 주로 override를 통해 여러 설정을 조정하게 됨
+
+10.1.3 Spring Security 용어 & 흐름
+- 동작
+: Filter -> Authentication Manager -> AuthenticationProvider -> UserDetailsService
+: 핵심은 Authentication Manager를 통해 이루어짐
+: Authentication Provider는 인증 매니저가 어떻게 동작해야하는지 결정
+: 실제적인 인증은 UserDetailsService에 의해 이루어짐
+-> Spring Security를 관통하는 가장 핵심 개념 : Authentication, Authorization임 (인증, 인가)
+· 인증(Authentication) : 자신을 '증명'하는 것
+· 인가(Authorization) : 일종의 허가를 해줌
+
+- Filter, Filter Chaining
+: Spring Security에서는 Bean과 Filter는 연동할 수 있는 구조로 되어 있음. 일반적인 filter는 Bean을 사용할 수 없으므로 별도의 클래스를 상속받는 형태가 많음
+: Spring Security의 내부에는 여러 개의 Filter가 Filter Chain이라는 구조로 Request를 처리하게 됨. 개발 시 Filter를 확장하고 설정하면 Spring Security를 통해서 다양한 형태의 로그인 처리가 가능함
+* Spring Security의 Core Filter
+· ChannelProcessingFilter
+: 요청이 안전한 채널(HTTPS 등)을 통해 전송되었는지 확인하는 역할을 함
+· SecurityContextPersistenceFilter
+: 보안 컨텍스트를 HTTP 세션에 저장하고 로드하여 인증 및 권한 정보를 계속 유지하는 필터
+· ConcurrentSessionFilter
+: 동시 세션 제어 담당 필터, 동일한 사용자가 여러 장치에서 로그인할 때 처리 방식을 결정
+· UsernamePasswordAuthenticationFilter
+: Username과 Password를 사용한 폼 기반의 인증을 처리하는 필터, Spring Security에서 기본 제공되는 인증 필터 중 하나
+· SecurityContextHolderAwareRequestFilter
+: 현재의 SecurityContextHolder에 Access 가능하게 HttpServletRequest를 wrapping 하는 역할 (추가적인 기능 제공 가능)
+· RememberMeAuthenticationFilter
+: "Remember Me" 구현하는 필터로, 이전에 인증된 사용자를 기억하여 자동 로그인을 지원합니다.
+· AnonymousAuthenticationFilter
+: 익명 사용자에 대한 인증을 처리하는 필터, 로그인하지 않은 사용자를 위해 임시로 생성된 인증 객체를 제공
+· ExceptionTranslationFilter
+: 인증 및 권한 예외를 적절한 Spring Security 예외로 변환하여 처리하는 필터입니다.
+· FilterSecurityInterceoptor
+: 보안 관리자로부터 수신한 권한 정보를 기반으로 요청을 검사하여 보안 결정을 내리는 필터. 주로 자원에 대한 접근 제어를 담당합니다.
+
+- 인증을 위한 AuthenticationManager
+: Filter의 핵심적인 동작은 AuthenticationManager를 통해 인증(Authentication)이라는 타입의 객체로 작업을 하게됨. AuthenticationManager가 가진 인증처리 메서드는 파라미터도 Authentication 타입으로, 리턴도 Authentication 타입임. (흠터레스팅)
+: 실제 동작에서 전달되는 파라미터는 UsernamePasswordAuthenticationToken같은 토큰이라는 이름으로 전달됨. -> 인증관련 정보를 토큰이라는 객체를 만들어 전달한다는 의미.
+*UsernamePasswordAuthenticationFilter :
+String username = obtainUsername(request);
+username = (username != null) ? username : "" ;
+username = username.trim();
+String password = obtainPassword(request);
+password = (password != null) ? password : "";
+UsernamePasswordAuthenticationToken authRequest = new UsernamePasswordAuthenticationToken(username, password);
+// Allow subclasses to set the "details" property
+setDetails(request, authRequest);
+return this.getAuthenticationManager().authenticate(authRequest);
+-> 코드의 내용을 보면
+request를 이용해서 사용자의 username, password를 받아서 UsernamePasswordAuthenticationToken을 만들고 이를 AuthenticationManager의 authenticate()에 파라미터로 전달함. 
+-> AuthenticationManager는 다양한 방식으로 인증처리 방법을 제공해야 함. (DB를 이용할지, 메모리 상에 있는 정보를 활용할 것인지 등등)
+-> AuthenticationManager는 이러한 처리를 AuthenticationProvider로 처리함
+
+AuthenticationProvider는 전달되는 토큰의 타입을 처리할 수 있는 존재인지 확인하고 이를 통해 authenticate()를 수행함. 
+=> 
+AuthenticationManager -> ProviderManager ->
+DAOAuthenticationProvider, CASAuthenticationProvider, JAASAuthenticationProvider, X.509AuthenticationProvider, LDAPAuthenticationProvider
+
+-> AuthenticationProvider는 내부적으로 UserDetailsService를 이용함 -> 실제로 인증을 위한 데이터를 가져오는 역할을 함
+(JPARepository면 UserDetailsService를 활용해서 사용자의 인증 정보를 처리함)
+
+- 인가(Authorization)와 권한/접근 제한
+: 인증 처리 단계가 끝나면 다음은 '사용자의 권한이 적절한가?' 임. Filter에서 호출하는 AuthenticationManager에는 authenticate()가 있는데 이 메서드의 리턴값은 Authentication이라는 '인증' 정보임. 이 안에는 Roles라는 '권한'에 대한 정보가 있음. 이걸로 사용자가 원하는 작업을 할 수 있는지 허가하게 됨. (=Access-Control, 접근 제한) 
+*
+1) 원하는 URL 입력
+2) Filter에서 인증/인가가 필요하다고 판단하고 사용자가 인증하도록 로그인 화면을 보여줌
+3) 정보가 전달되면 AuthenticationManager가 적절한 AuthenticationProvider를 찾아서 인증을 시도함
+: AuthenticationProvider의 실제 동작은 UserDetailsService를 구현한 객체로 처리함. 올바른 사용자라고 인증되면 사용자의 정보를 Authentication 타입으로 전달함(인증). 전달된 객체로 사용자가 적절한 권한이 있는지 확인하는 Authorization(인가)과정을 거치게 됨. 문제가 없으면 정상적인 화면을 볼 수 있게 됨
+
+10.2 Spring Security Customizing (p489, pdf p487)
+: SecurityConfig를 이용해 약간의 override로 제어
+
+10.2.1 반드시 필요한 PasswordEncoder
+: 패스워드를 인코딩하는 것. Spring Boot 2.0부턴 반드시 PasswordEncoder를 지정해야 함. 
+: Spring Security에서는 여러 종류의 PasswordEncoder를 제공하는데, 가장 많이 사용하는 것은 BCryptPasswordEncoder임
+- BCryptPasswordEncoder
+: 'bcypt'라는 Hash함수를 이용해서 패스워드를 암호화하는 목적으로 설계된 클래스. 
+: 다시 원래대로 복호화 불가, 매번 암호화된 값도 다름(길이는 동일). 대신 특정 문자열이 암호화된 결과인지만 확인할 수 있고, 원본 내용을 볼 수 없으므로 자주 사용되고 있음. 
+* Tests
+: BCryptPasswordEncoder의 동작을 확인하려고 작성. 인코딩된 비밀번호의 값은 항상 바뀌지만 matches()의 결과는 항상 true. $2a$10$CvxvylYgh.Nnowp2RytJPOMDLcNDXju.nz86oqn6/XaLGH8WCzZuW
+
+10.2.2 AuthenticationManager 설정
+: 암호화된 pw 이용을 위해서는 해당 pw를 사용하는 사용자가 필요함. 
+: @Bean
+    public InMemoryUserDetailsManager userDetailsManager() {
+        UserDetails user = User.builder()
+                .username("user1")
+                .password(passwordEncoder().encode("1111"))
+                .roles("USER")
+                .build();
+
+        log.info("userDetailsManager : ");
+        log.info(user);
+
+        return new InMemoryUserDetailsManager(user);
+    }
+
+위 과정을 거치면 user1이라는 username + 1111이라는 password + USER라는 roles가 생성됨
+
+10.2.3 인가(Authorization)가 필요한 Resource 설정
+: Spring Security를 이용해서 특정 리소스(웹의 경우 특정 URL)에 접근 제한을 하는 방식은
+1) 설정을 통해 패턴 지정
+2) @을 이용해 적용하기
+-> @을 이용하는게 더 간단하지만 연습을 위해 예제에서는 SecurityConfig로 설정
+ http.authorizeHttpRequests((authorizeHttpRequests) -> {
+            authorizeHttpRequests
+                    .requestMatchers("/sample/exall").permitAll()
+                    .requestMatchers("/sample/exmember").hasRole("USER");
+        });
+
+- formLogin()
+: loginPage(), loginProcessUrl(), defaultSuccessUrl(), failureUrl() 등을 이용해서 필요한 설정을 지정 가능
+10.2.4 CSRF 설정
+: Spring Security는 기본적으로 CSRF(Cross Site Request Forgery : 크로스 사이트 요청 위조) 공격을 방어하기 위해 임의의 값을 만들어서 이를 GET을 제외한 POST, PUT, DELETE 등에 포함시켜야지만 정상적인 동작이 가능함
+* CSRF 공격 : 사이트 간 요청 위조. 
+* CSRF 토큰은 기본적으로 세션당 하나씩 생성되므로 세션이 다르다면 다른 값으로 생성됨
+-> 일반적인 세션을 이용하고, <form>을 이용하는 방식에서는 CSRF토큰이 보안상으로는 권장되지만 경우에 따라서 CSRF 토큰의 발생을 하지 않는 경우도 있음
+
+- CSRF 토큰 비활성화 방법
+http.csrf((csrf) -> csrf.disable());
+
+10.2.5 logout 설정
+: logout()을 사용하면 로그아웃처리가 가능
+http.logout((logout) ->
+                logout.deleteCookies("remove")
+                        .invalidateHttpSession(false)
+                        .logoutUrl("/custom-logout")
+                        .logoutSuccessUrl("/logout-success")
+        )
+: formLogin()과 마찬가지임. logoutUrl(), logoutSuccessUrl() 등을 지정 가능. Spring Security는 기본적으로 HttpSession을 이용하므로 invalidatedHttpSession(), deleteCookies()를 이용해서 쿠키나 세션을 무효화시킬 수 있도록 설정 가능
+
+10.3 프로젝트에 적용하기 위한 JPA 처리 (p502, pdf p500)
+: 프로젝트에 적용하려면 이에 맞는 DB관련 처리가 필요함
+· 이메일(아이디 역할)
+· 패스워드
+· 이름(닉네임)
+· 소셜 가입 여부(소셜 로그인으로 회원 가입된 경우)
+· 기타(등록일/수정일)
+
+- ClubMemberRole
+· USER: 일반회원
+· MANAGER : 중간 관리 회원
+· ADMIN : 총괄 관리자
+-> 회원의 권한은 1개만을 가지는 것이 정상적인 설계지만 프로젝트에서는 1명이 여러개의 권한을 가진다고 가정하고 구성할 것임. ClubMember와 ClubMemberRole의 관계는 1:N이지만, 사실상 ClubMemberRole 자체가 핵심적인 역할은 불가하므로 별도의 Entity보단 @ElementCollection을 이용해서 별도의 PK 생성없이 구성
+# 프로젝트에서 entity 패키지에 ClubMember생성
+# entity - ClubMemberRole
+# ClubMember는 ClubMemberRole 타입값을 처리하기 위해 Set<ClubMemberRole>을 추가하고 Fetch는 LAZY로 지정
+# 이러면 club_member 테이블과 club_member_role-set이라는 테이블이 생성됨
+p505(503)
+
+
